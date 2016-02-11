@@ -1,118 +1,163 @@
-
+"""More or less copied from idlmapper/src/evilscan.c
+"""
 from __future__ import division, absolute_import
-# import datetime
+from sdss.utilities import astrodatetime
 import glob
 import os
 
 import numpy
 import scipy.ndimage
 
-# many settings taken from idlmapper/src/evilscan.c
+__all__ = ["Scan"]
 
 MAX_SCANPIX = 1500000
 THRESH = 100       # signal above the mean that we trigger on. Meaningless guess for testing.
 
 
-# other globals that should come from elsewhere!!!
+# other globals that should come from elsewhere , eg configuration file!!!
 MOTORSPEED = 400
 FPS = 30 # frames per second
 MAXMEAN = 50 + 5
+# hacks to make evilmap4 work
+MOTORID1 = 46
+MOTORID2 = 31
+MOTORID3 = 14
+# CARTID = 1
+CAM_HEIGHT = 960
+CAM_WIDTH = 960
+SCANID = 1
 
 class Scan(object):
-    def __init__(self, filename):
+    def __init__(self, plate, filename, motorSpeed=MOTORSPEED, fps=FPS, mjd=None):
         """! A Scan
 
+        @param[in] plate, int
         @param[in] filename, string
+        @param[in] motorSpeed, float
+        @param[in] fps, frames per second, float
+        @param[in] mjd, mdj or None
         """
+        self.plate = plate
+        self.motorSpeed = motorSpeed
+        self.fps = fps
         if os.path.exists(filename):
             raise RuntimeError("file already exists, specify another", filename)
-        self.filename
+        self.filename = filename
         self.writeFileHeader()
-        self.frameNum = 0
         self.thresh = None
         self.motor = None
+        self.now = astrodatetime.now()
+        self.mjd = mjd if mjd is not None else self.now.mjd
+        self.dataLines = [] # will hold SCANPIX lines to be written to a file
 
-    def writeFileHeader(self):
-        """!Initialize the scan file and write header.
+    def writeOutputFile(self):
+        """!Write the scan file
         """
 
-        print("\nWriting output file %s\n"%self.filename);
-        with open(self.filename, "w") as f:
-
+        print("\nWriting output file %s\n"%self.filename)
+        with open(self.filename, "w") as fileObj:
             # header info, I don't care about this now but
             # put it in eventually
 
-            # f.write("EVILSCAN\n")
-            # # f.write("fscanVersion %s\n\n"%scanVersion)
-            # f.write("pluggers     %s\n"%pluggers)
-            # f.write("plateId      %d\n"%platenum)
-            # f.write("fscanMJD     %d\n"%scanMJD)
-            # f.write("fscanId      %d\n"%scanId)
-            # f.write("fscanDate    %s"%datetime.datetime.now().isoformat()) # includes CR
-            # f.write("fscanFile    %s\n\n", filename)
-            # f.write("fscanMode    %s\n", scan_mode_long)
-            # f.write("fscanSpeed   %d\n", mspeed)
-            # f.write("fscanRows    %d\n", rows)
-            # f.write("fscanCols    %d\n", cols)
-            # f.write("fscanBias    %f\n", bias)
-            # f.write("motorId1     %d\n", motorID1)
-            # f.write("motorId2     %d\n", motorID2)
-            # f.write("motorId3     %d\n\n", motorID3)
-            # f.write("cartridgeId  %d\n\n", cartid)
+            # fileObj.write("EVILSCAN\n")
+            # # fileObj.write("fscanVersion %s\n\n"%scanVersion)
+            # fileObj.write("pluggers     %s\n"%plateuggers)
+            fileObj.write("plateId      %d\n"%self.plate)
+            fileObj.write("fscanMJD     %d\n"%self.mjd) # needed for evilmap4
+            fileObj.write("fscanId      %d\n"%SCANID) # needed for evilmap4
+            fileObj.write("fscanDate    %s"%self.now.isoformat()) # includes CR
+            # fileObj.write("fscanFile    %s\n\n", filename)
+            # fileObj.write("fscanMode    %s\n", scan_mode_long)
+            fileObj.write("fscanSpeed   %d\n"%self.motorSpeed)
+            fileObj.write("fscanRows    %d\n"%CAM_WIDTH) # needed for evilmap4
+            fileObj.write("fscanCols    %d\n"%CAM_HEIGHT) # needed for evilmap4
+            fileObj.write("fscanBias    %f\n"%self.bias) # needed for evilmap4
+            fileObj.write("motorId1     %d\n"%MOTORID1) # needed for evilmap4
+            fileObj.write("motorId2     %d\n"%MOTORID2) # needed for evilmap4
+            fileObj.write("motorId3     %d\n\n"%MOTORID3) # needed for evilmap4
+            # fileObj.write("cartridgeId  %d\n\n", cartid)
 
-            f.write("typedef struct {\n")
-            f.write("  int    motor\n")
-            f.write("  int    frame\n")
-            f.write("  int    motorpos\n")
-            f.write("  float  tstamp\n")
-            f.write("  int    row\n")
-            f.write("  int    col\n")
-            f.write("  int    flux\n")
-            f.write("} SCANPIX\n\n")
+            fileObj.write("typedef struct {\n")
+            fileObj.write("  int    motor\n")
+            fileObj.write("  int    frame\n")
+            fileObj.write("  int    motorpos\n")
+            fileObj.write("  float  tstamp\n")
+            fileObj.write("  int    row\n")
+            fileObj.write("  int    col\n")
+            fileObj.write("  int    flux\n")
+            fileObj.write("} SCANPIX\n\n")
 
-    def processFrame(self, imageFile):
+            # write collected lines of data
+            for line in self.dataLines:
+                fileObj.write(line)
+
+
+    def processFrame(self, imageFile, frameNumber, motorID):
         """! Process a single image
 
-        @param[in] imageFile. String image to be opened)
+        @param[in] imageFile. String
+        @param[in] frameNumber. Int
+
         """
         imgData = scipy.ndimage.imread(imageFile, flatten=True)
-        if self.thresh is None:
+        if self.thresh is None and self.bias is None and frameNumber == 5:
+            # use the 5th frame to determine the bias
             # use this frame (the first to determine the bias level)
             # note we could compute bias level every time without
             # much overhead...
-            self.thresh = numpy.mean(imgData) + THRESH
+            self.bias = numpy.mean(imgData)
+            self.thresh = self.bias + THRESH
         imgMean = numpy.mean(imgData)
         if imgMean > MAXMEAN:
              raise RuntimeError("TOO MUCH SIGNAL FROM SCATTERED LIGHT ON THE CAMERA!")
-        litUpPixels = numpy.nonzero(imgData > self.thresh)
+        litUpPixels = numpy.argwhere(imgData > self.thresh)
         if len(litUpPixels) > MAX_SCANPIX:
             raise RuntimeError("TOO MUCH SIGNAL FROM SCATTERED LIGHT ON THE CAMERA!")
-        timestamp = self.frameNum * FPS
-        motorPos = timestamp * MOTORSPEED
-        with open(self.filename, "a") as f:
-            for litUpPixel in litUpPixels:
-                dataLine = "SCANPIX %2d %5d %5d %9.4f %3d %3d %3d\n"%(
-                    self.motor,
-                    self.frame,
-                    motorPos,
-                    timestamp,
-                    litUpPixel[0],
-                    litUpPixel[1],
-                    imgData[litUpPixel],
-                    )
-                f.write(dataLine)
-        self.frameNum += 1
+        timestamp = frameNumber / self.fps
+        motorPos = timestamp * self.motorSpeed
+        for litUpPixel in litUpPixels:
+            x,y = litUpPixel
+            dataLine = "SCANPIX %2d %5d %5d %9.4f %3d %3d %3d\n"%(
+                motorID,
+                frameNumber,
+                motorPos,
+                timestamp,
+                x,
+                y,
+                imgData[x,y],
+                )
+            self.dataLines.append(dataLine)
 
-    def batchProcess(self, imageFileDirectory, motorID, imgExtension="jpeg"):
-        """! Process all images in given directory, assigned to motorID
+    def batchProcess(self, imageFileDirectory, motorID, imgExtension="jpg"):
+        """! Process all images in given directory
 
         @param[in]: imageFileDirectory: directory containing image files (in sortable order)
         @param[in]: motorID: 1, 2, or 3
         """
         imageFiles = glob.glob(os.path.join(imageFileDirectory, "*."+imgExtension))
-        self.motor = motorID
-        self.frameNum = 0
-        for imageFile in imageFiles:
-            self.processFrame(imageFileDirectory)
+        # warning image files are not sorted as expected, even after explicitly sorting
+        # eg 999.jpg > 2000.jpg.  this is bad because image order matters very much
+        # furthermore rather than
+        # note image files are expected to be 1.jpg, 2.jpg, 3.jpg, ..., 354.jpg...
+        # while loop seems weird, but whatever
+        frameNumber = 1
+        while True:
+            nextImageFile = "%i.%s"%(frameNumber, imgExtension)
+            imageFilePath = os.path.join(imageFileDirectory, nextImageFile)
+            if imageFilePath not in imageFiles:
+                print(imageFilePath, "not in imageFiles", len(imageFiles))
+                break
+            if frameNumber%100==0:
+                # print progress
+                print("%.1f "%(100*frameNumber/float(len(imageFiles))))
+            self.processFrame(imageFilePath, frameNumber, motorID)
+            frameNumber += 1
 
-
+if __name__ == "__main__":
+    plateID = os.getcwd().split("plate")[-1]
+    scanName = "fiberScan-%s-test.par"%plateID
+    if os.path.exists(scanName):
+        os.remove(scanName)
+    g = Scan(scanName)
+    g.batchProcess("laser1", 1)
+    g.batchProcess("laser3", 3)
