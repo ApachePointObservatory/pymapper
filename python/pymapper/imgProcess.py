@@ -5,9 +5,13 @@ import glob
 import os
 import collections
 from operator import attrgetter
+import time
+import pickle
 
 import numpy
 import scipy.ndimage
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from astropy.io import fits
@@ -15,7 +19,7 @@ from astropy.io import fits
 import PyGuide
 
 THRESH = 50
-MINCOUNTS = 300
+MINCOUNTS = 50
 
 def applyThreshold(array2d, thresh):
     # which pixels are greater than sigmaDetect sigma from the mean
@@ -66,25 +70,24 @@ def createFlat(imageFileList):
     return flatStack / len(imageFileList)
 
 class DetectedFiber(object):
-    def __init__(self, pyGuideStar, imageFrameName):
-        self.fiberDetections = [pyGuideStar]
+    def __init__(self, pyGuideCentroid, imageFrameName):
+        self.centroids = [pyGuideCentroid]
         self.imageFrames = [imageFrameName]
-        self.prevFrame = None
 
     @property
     def xyCtr(self):
-        return self.fiberDetections[-1].xyCtr
+        return self.centroids[-1].xyCtr
 
     @property
     def rad(self):
-        return self.fiberDetections[-1].rad
+        return self.centroids[-1].rad
 
-    def belongs2me(self, pyGuideStar):
-        dist = numpy.linalg.norm(numpy.subtract(pyGuideStar.xyCtr, self.xyCtr))
-        return dist<self.rad*2
+    def belongs2me(self, pyGuideCentroid):
+        dist = numpy.linalg.norm(numpy.subtract(pyGuideCentroid.xyCtr, self.xyCtr))
+        return dist<(self.rad/2.)
 
-    def add2me(self, pyGuideStar, imgFrameName):
-        self.fiberDetections.append(pyGuideStar)
+    def add2me(self, pyGuideCentroid, imgFrameName):
+        self.centroids.append(pyGuideCentroid)
         self.imageFrames.append(imgFrameName)
 
     def detectedIn(self, imageFrameName):
@@ -96,55 +99,92 @@ class DetectedFiberList(object):
         # detected fibers is keyed by imageName
         self.detectedFibers = []
         self.flatImg = flatImg
-        self.previousImg = None
+        self.prevFrames = collections.deque([], maxlen=4)
 
-    # @property
-    # def lastFrameDetections(self):
-    #     """Return all detected fibers found in the previous image frame
-    #     """
-    #     previousFibers = []
-    #     if self.previousImg is not None:
-    #         for fiber in self.detectedFibers[::-1]:
-    #             if fiber.detectedIn(self.previousImg):
-    #                 previousFibers.append(fiber)
-    #             else:
-    #                 break
-    #     return previousFibers
+    def pickle(self, fileName):
+        detectedFibers = []
+        for detectedFiber in self.detectedFibers:
+            detectedFibers.append(
+                dict((
+                    ("imageFrames", detectedFiber.imageFrames),
+                    ("counts", [centroid.counts for centroid in detectedFiber.centroids]),
+                    ("xyCtrs", [centroid.xyCtr for centroid in detectedFiber.centroids]),
+                ))
+            )
 
-    def processImage(self, imageFile):
+        # save detections to picked file
+        output = open(fileName, "wb")
+        pickle.dump(detectedFibers, output)
+        output.close()
+
+    @property
+    def lastFrameDetections(self):
+        """Return all detected fibers found in the previous image frame
+        """
+        previousFibers = []
+        for prevImg in self.prevFrames:
+            for fiber in self.detectedFibers[::-1]:
+                if fiber.detectedIn(prevImg):
+                    previousFibers.append(fiber)
+                else:
+                    break
+        return previousFibers
+
+    def processImage(self, imageFile, frameNumber):
         """! Process a single image
 
         @param[in] imageFile. String
 
         """
         # read in the image data and apply the flat
-        imgData = scipy.ndimage.imread(imageFile) / self.flatImg
-        pyGuideFinds = PyGuide.findStars(imgData, None, None, self.ccdInfo)[0]
+        imgData = scipy.ndimage.imread(imageFile) #/ self.flatImg
+        # imgData = scipy.ndimage.gaussian_filter(imgData, 1, mode="nearest")
+        #plt.figure();plt.imshow(imgData);plt.show()
+        pyGuideCentroids = PyGuide.findStars(imgData, None, None, self.ccdInfo)[0]
+
+        # fig = plt.figure(figsize=(10,10));plt.imshow(imgData, vmin=0, vmax=10)#plt.show(block=False)
+        # plt.scatter(0, 0, s=80, facecolors='none', edgecolors='b')
+        # for centroid in pyGuideCentroids:
+        #     x,y = centroid.xyCtr
+        #     plt.scatter(x, y, s=80, facecolors='none', edgecolors='r')
+        # zfilled = "%i"%frameNumber
+        # zfilled = zfilled.zfill(5)
+        # dd = os.path.split(imageFile)[0]
+        # nfn = os.path.join(dd, "pyguide%s.png"%zfilled)
+        # fig.savefig(nfn); plt.close(fig)    # close the figure
+
+
+        # print("max, mean value: ", numpy.max(imgData), numpy.mean(imgData))
         # toss all finds with counts below the threshold:
-        pyGuideFinds = [pyGuideFind for pyGuideFind in pyGuideFinds if pyGuideFind.counts > MINCOUNTS]
+        # pyGuideCentroids = [pyGuideFind for pyGuideFind in pyGuideCentroids if pyGuideFind.counts > MINCOUNTS]
         # determine if any of these detections were present in the previous frame,
         # only look to the previous image (fibers may only be detected in contiguous images)
         # so don't look further back than one image.
         # if so, apply them to the correct (previous) detection
         # if they were not previously detected, create a new detection
-        # print("found ", len(pyGuideFinds), "fibers ")
-        # prevDetections = self.lastFrameDetections
-        for pyGuideFind in pyGuideFinds:
+        # print("found ", len(pyGuideCentroids), "fibers ")
+        # prevDetections = self.lastFrameDetectionsf
+        for ind, pyGuideFind in enumerate(pyGuideCentroids):
+            # print("found", pyGuideFind.xyCtr, pyGuideFind.counts, pyGuideFind.rad)
             # is this a new dectection or was it found already in the previous image?
             isNewDetection = True
-            for prevDetection in self.detectedFibers:
+            for prevDetection in self.lastFrameDetections: #self.detectedFibers:
                 if prevDetection.belongs2me(pyGuideFind):
                     if isNewDetection == False:
                         raise RuntimeError("This shouldn't ever happen")
                     # print("previous detection!!!", pyGuideFind.xyCtr)
                     isNewDetection = False
                     prevDetection.add2me(pyGuideFind, imageFile)
-            # was this is a new detection?
+                    break # assign to the first that works???
+                # was this is a new detection?
             if isNewDetection:
+                print('new detection: img', imageFile)
                 self.detectedFibers.append(DetectedFiber(pyGuideFind, imageFile))
-        self.previousImg = imageFile
+            if ind == 0:
+                break # only detect up to two fibers in the same frame
+        self.prevFrames.append(imageFile)
 
-def batchProcess(imageFileDirectory, flatImg, frameStartNum, frameEndNum=None, imgBaseName="myFileName", imgExtension="bmp"):
+def batchProcess(imageFileDirectory, flatImg, frameStartNum, frameEndNum=None, imgBaseName="img", imgExtension="bmp"):
     """! Process all images in given directory
     """
     detectedFiberList = DetectedFiberList(flatImg)
@@ -155,6 +195,7 @@ def batchProcess(imageFileDirectory, flatImg, frameStartNum, frameEndNum=None, i
     # note image files are expected to be 1.jpg, 2.jpg, 3.jpg, ..., 354.jpg...
     # while loop seems weird, but whatever
     frameNumber = frameStartNum
+    tstart = time.time()
     while True:
         nextImageFile = "%s%i.%s"%(imgBaseName, frameNumber, imgExtension)
         imageFilePath = os.path.join(imageFileDirectory, nextImageFile)
@@ -162,24 +203,36 @@ def batchProcess(imageFileDirectory, flatImg, frameStartNum, frameEndNum=None, i
             print(imageFilePath, "not in imageFiles", len(imageFiles))
             break
         # print("processing: ", imageFilePath)
-        detectedFiberList.processImage(imageFilePath)
+        detectedFiberList.processImage(imageFilePath, frameNumber)
         if frameEndNum is not None and frameEndNum == frameNumber:
             break
         frameNumber += 1
+    print((frameNumber-frameStartNum)/(time.time()-tstart), "frames per second processed")
     return detectedFiberList
 
+def convToFits(imageFileDirectory, flatImg, frameStartNum, frameEndNum=None, imgBaseName="img", imgExtension="bmp"):
+    saveImage()
+
 if __name__ == "__main__":
-    imgDir = "/Users/csayres/Desktop/uwPyMapperData/sp_0_3"
-    imgBase = "myFileName"
-    flatImgList = [os.path.join(imgDir, "%s%i.bmp"%(imgBase, ii)) for ii in range(1,11)]
+    imgDir = "/home/lcomapper/Desktop/mappertestingMarch/run5"
+    imgBase = "img"
+    flatImgList = [os.path.join(imgDir, "%s%i.bmp"%(imgBase, ii)) for ii in range(1,7)]
     flatImg = createFlat(flatImgList)
-    frameStartNum = 11
+    frameStartNum = 10
     frameEndNum = None
-    detectedFiberList = batchProcess(imgDir, flatImg, frameStartNum, frameEndNum)
+    detectedFiberList = batchProcess(imgDir, flatImg, frameStartNum, frameEndNum, imgBase)
+    # remove those not detected in more than 1 frame
+    # detectedFiberList = [detectedFiber for detectedFiber in detectedFiberList.detectedFibers if len(detectedFiber.imageFrames)>1]
     print("Done, found ", len(detectedFiberList.detectedFibers), "fibers")
-    # import pdb; pdb.set_trace()
-    for fiber in detectedFiberList.detectedFibers: #sorted(detectedFiberList.detectedFibers, key=attrgetter("xyCtr")):
-        print (fiber.xyCtr, [os.path.split(x)[-1] for x in fiber.imageFrames])
+
+    # save detections to picked file
+    pickleFile = os.path.join(imgDir, "pickledDetections.pkl")
+    detectedFiberList.pickle(pickleFile)
+
+
+    # import pdb; pdb.set_trace(
+    # for fiber in detectedFiberList.detectedFibers: #sorted(detectedFiberList.detectedFibers, key=attrgetter("xyCtr")):
+    #     print (fiber.xyCtr, [os.path.split(x)[-1] for x in fiber.imageFrames])
 
 
     # imgNumber = 83

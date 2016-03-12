@@ -1,7 +1,7 @@
 """More or less copied from idlmapper/src/evilscan.c
 """
 from __future__ import division, absolute_import
-from sdss.utilities import astrodatetime
+from sdss.utilities.astrodatetime import datetime
 import glob
 import os
 
@@ -11,7 +11,7 @@ import scipy.ndimage
 __all__ = ["Scan"]
 
 MAX_SCANPIX = 1500000
-THRESH = 100       # signal above the mean that we trigger on. Meaningless guess for testing.
+THRESH = 50 #100       # signal above the mean that we trigger on. Meaningless guess for testing.
 
 
 # other globals that should come from elsewhere , eg configuration file!!!
@@ -41,12 +41,12 @@ class Scan(object):
         self.motorSpeed = motorSpeed
         self.fps = fps
         if os.path.exists(filename):
-            raise RuntimeError("file already exists, specify another", filename)
+            raise RuntimeError("file %s already exists, specify another, or remove it"%filename)
         self.filename = filename
-        self.writeFileHeader()
         self.thresh = None
+        self.bias = None
         self.motor = None
-        self.now = astrodatetime.now()
+        self.now = datetime.now()
         self.mjd = mjd if mjd is not None else self.now.mjd
         self.dataLines = [] # will hold SCANPIX lines to be written to a file
 
@@ -65,8 +65,8 @@ class Scan(object):
             fileObj.write("plateId      %d\n"%self.plate)
             fileObj.write("fscanMJD     %d\n"%self.mjd) # needed for evilmap4
             fileObj.write("fscanId      %d\n"%SCANID) # needed for evilmap4
-            fileObj.write("fscanDate    %s"%self.now.isoformat()) # includes CR
-            # fileObj.write("fscanFile    %s\n\n", filename)
+            fileObj.write("fscanDate    %s\n"%self.now.isoformat()) # includes CR
+            fileObj.write("fscanFile    %s\n\n"%self.filename)
             # fileObj.write("fscanMode    %s\n", scan_mode_long)
             fileObj.write("fscanSpeed   %d\n"%self.motorSpeed)
             fileObj.write("fscanRows    %d\n"%CAM_WIDTH) # needed for evilmap4
@@ -100,7 +100,7 @@ class Scan(object):
 
         """
         imgData = scipy.ndimage.imread(imageFile, flatten=True)
-        if self.thresh is None and self.bias is None and frameNumber == 5:
+        if self.thresh is None and self.bias is None:
             # use the 5th frame to determine the bias
             # use this frame (the first to determine the bias level)
             # note we could compute bias level every time without
@@ -129,15 +129,15 @@ class Scan(object):
             self.dataLines.append(dataLine)
 
     def batchProcess(self, imageFileDirectory, motorID, imgExtension="jpg"):
-        """! Process all images in given directory
+        """! Process all images in imageFileDirectory
 
         @param[in]: imageFileDirectory: directory containing image files (in sortable order)
         @param[in]: motorID: 1, 2, or 3
+        @param[in]: imgExtension, used for globbing.
         """
         imageFiles = glob.glob(os.path.join(imageFileDirectory, "*."+imgExtension))
         # warning image files are not sorted as expected, even after explicitly sorting
         # eg 999.jpg > 2000.jpg.  this is bad because image order matters very much
-        # furthermore rather than
         # note image files are expected to be 1.jpg, 2.jpg, 3.jpg, ..., 354.jpg...
         # while loop seems weird, but whatever
         frameNumber = 1
@@ -145,19 +145,11 @@ class Scan(object):
             nextImageFile = "%i.%s"%(frameNumber, imgExtension)
             imageFilePath = os.path.join(imageFileDirectory, nextImageFile)
             if imageFilePath not in imageFiles:
-                print(imageFilePath, "not in imageFiles", len(imageFiles))
+                print("all images done, %i frames processed"%frameNumber)
                 break
             if frameNumber%100==0:
                 # print progress
-                print("%.1f "%(100*frameNumber/float(len(imageFiles))))
+                print("%.1f percent done, motor %i"%(100*frameNumber/float(len(imageFiles)), motorID))
             self.processFrame(imageFilePath, frameNumber, motorID)
             frameNumber += 1
 
-if __name__ == "__main__":
-    plateID = os.getcwd().split("plate")[-1]
-    scanName = "fiberScan-%s-test.par"%plateID
-    if os.path.exists(scanName):
-        os.remove(scanName)
-    g = Scan(scanName)
-    g.batchProcess("laser1", 1)
-    g.batchProcess("laser3", 3)
