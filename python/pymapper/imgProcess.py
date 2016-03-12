@@ -83,8 +83,14 @@ class DetectedFiber(object):
         return self.centroids[-1].rad
 
     def belongs2me(self, pyGuideCentroid):
+        # if center moves by more than 0.25 pixels
+        # doesn't belong
         dist = numpy.linalg.norm(numpy.subtract(pyGuideCentroid.xyCtr, self.xyCtr))
-        return dist<(self.rad/2.)
+        if dist < 2:
+            print("belongs to", dist, self.imageFrames)
+        return dist < 2
+        # print("dist!", dist, self.imageFrames)
+        # return dist<(self.rad/2.)
 
     def add2me(self, pyGuideCentroid, imgFrameName):
         self.centroids.append(pyGuideCentroid)
@@ -99,7 +105,7 @@ class DetectedFiberList(object):
         # detected fibers is keyed by imageName
         self.detectedFibers = []
         self.flatImg = flatImg
-        self.prevFrames = collections.deque([], maxlen=4)
+        # self.prevFrames = collections.deque([], maxlen=4)
 
     def pickle(self, fileName):
         detectedFibers = []
@@ -117,18 +123,18 @@ class DetectedFiberList(object):
         pickle.dump(detectedFibers, output)
         output.close()
 
-    @property
-    def lastFrameDetections(self):
-        """Return all detected fibers found in the previous image frame
-        """
-        previousFibers = []
-        for prevImg in self.prevFrames:
-            for fiber in self.detectedFibers[::-1]:
-                if fiber.detectedIn(prevImg):
-                    previousFibers.append(fiber)
-                else:
-                    break
-        return previousFibers
+    # @property
+    # def lastFrameDetections(self):
+    #     """Return all detected fibers found in the previous image frame
+    #     """
+    #     previousFibers = []
+    #     for prevImg in self.prevFrames:
+    #         for fiber in self.detectedFibers[::-1]:
+    #             if fiber.detectedIn(prevImg):
+    #                 previousFibers.append(fiber)
+    #             else:
+    #                 break
+    #     return previousFibers
 
     def processImage(self, imageFile, frameNumber):
         """! Process a single image
@@ -137,23 +143,17 @@ class DetectedFiberList(object):
 
         """
         # read in the image data and apply the flat
+        print("processing frame", os.path.split(imageFile)[-1])
         imgData = scipy.ndimage.imread(imageFile) #/ self.flatImg
         # imgData = scipy.ndimage.gaussian_filter(imgData, 1, mode="nearest")
         #plt.figure();plt.imshow(imgData);plt.show()
         pyGuideCentroids = PyGuide.findStars(imgData, None, None, self.ccdInfo)[0]
-        brightestCentroid = pyGuideCentroids[0]
-        # fig = plt.figure(figsize=(10,10));plt.imshow(imgData, vmin=0, vmax=10)#plt.show(block=False)
-        # plt.scatter(0, 0, s=80, facecolors='none', edgecolors='b')
-        # for centroid in pyGuideCentroids:
-        #     x,y = centroid.xyCtr
-        #     plt.scatter(x, y, s=80, facecolors='none', edgecolors='r')
-        # zfilled = "%i"%frameNumber
-        # zfilled = zfilled.zfill(5)
-        # dd = os.path.split(imageFile)[0]
-        # nfn = os.path.join(dd, "pyguide%s.png"%zfilled)
-        # fig.savefig(nfn); plt.close(fig)    # close the figure
+        brightestCentroid = None
+        if pyGuideCentroids:
+            if pyGuideCentroids[0].counts > 300:
+                brightestCentroid = pyGuideCentroids[0]
 
-
+        isNewDetection = None
         # print("max, mean value: ", numpy.max(imgData), numpy.mean(imgData))
         # toss all finds with counts below the threshold:
         # pyGuideCentroids = [pyGuideFind for pyGuideFind in pyGuideCentroids if pyGuideFind.counts > MINCOUNTS]
@@ -167,20 +167,38 @@ class DetectedFiberList(object):
         # for ind, pyGuideFind in enumerate(pyGuideCentroids):
             # print("found", pyGuideFind.xyCtr, pyGuideFind.counts, pyGuideFind.rad)
             # is this a new dectection or was it found already in the previous image?
-        isNewDetection = True
-        for prevDetection in self.lastFrameDetections: #self.detectedFibers:
-            if prevDetection.belongs2me(brightestCentroid):
-                if isNewDetection == False:
-                    raise RuntimeError("This shouldn't ever happen")
-                # print("previous detection!!!", brightestCentroid.xyCtr)
-                isNewDetection = False
-                prevDetection.add2me(brightestCentroid, imageFile)
-                # break # assign to the first that works???
-            # was this is a new detection?
-        if isNewDetection:
-            print('new detection: img', imageFile)
-            self.detectedFibers.append(DetectedFiber(brightestCentroid, imageFile))
-        self.prevFrames.append(imageFile)
+        crashMe = False
+        if brightestCentroid is not None:
+            isNewDetection = True
+            # search through every previous detection
+            for prevDetection in self.detectedFibers:
+                if prevDetection.belongs2me(brightestCentroid):
+                    if isNewDetection == False:
+                        crashMe = True
+                        print("bad bad, crash me!")
+                    # print("previous detection!!!", brightestCentroid.xyCtr)
+                    isNewDetection = False
+                    print("previous detection", os.path.split(imageFile)[-1], prevDetection.imageFrames)
+                    prevDetection.add2me(brightestCentroid, imageFile)
+                    # break # assign to the first that works???
+                # was this is a new detection?
+            if isNewDetection:
+                print('new detection:', os.path.split(imageFile)[-1], brightestCentroid.counts, brightestCentroid.xyCtr)
+                self.detectedFibers.append(DetectedFiber(brightestCentroid, imageFile))
+        # self.prevFrames.append(imageFile)
+        color = "r" if isNewDetection else "b"
+        fig = plt.figure(figsize=(10,10));plt.imshow(imgData, vmin=0, vmax=10)#plt.show(block=False)
+        plt.scatter(0, 0, s=80, facecolors='none', edgecolors='b')
+        if brightestCentroid is not None:
+            x,y = brightestCentroid.xyCtr
+            plt.scatter(x, y, s=80, facecolors='none', edgecolors=color)
+        zfilled = "%i"%frameNumber
+        zfilled = zfilled.zfill(5)
+        dd = os.path.split(imageFile)[0]
+        nfn = os.path.join(dd, "pyguide%s.png"%zfilled)
+        fig.savefig(nfn); plt.close(fig)    # close the figure
+        if crashMe:
+            raise RuntimeError("Non-unique detection!!!!")
 
 def batchProcess(imageFileDirectory, flatImg, frameStartNum, frameEndNum=None, imgBaseName="img", imgExtension="bmp"):
     """! Process all images in given directory
@@ -212,7 +230,7 @@ def convToFits(imageFileDirectory, flatImg, frameStartNum, frameEndNum=None, img
     saveImage()
 
 if __name__ == "__main__":
-    imgDir = "/home/lcomapper/Desktop/mappertestingMarch/run5"
+    imgDir = "/home/lcomapper/Desktop/mappertestingMarch/run6"
     imgBase = "img"
     flatImgList = [os.path.join(imgDir, "%s%i.bmp"%(imgBase, ii)) for ii in range(1,7)]
     flatImg = createFlat(flatImgList)

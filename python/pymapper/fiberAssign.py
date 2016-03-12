@@ -16,7 +16,7 @@ def frameNumFromName(imgName, imgBase="img", imgExt="bmp"):
 
 if __name__ == "__main__":
     import pickle
-    imgDir = "/home/lcomapper/Desktop/mappertestingMarch/run5"
+    imgDir = "/home/lcomapper/Desktop/mappertestingMarch/run6"
 
     pkl_file = open(os.path.join(imgDir, "pickledDetections.pkl"), "rb")
 
@@ -34,10 +34,10 @@ if __name__ == "__main__":
         for counts, filename in itertools.izip(detectedFiber["counts"], detectedFiber["imageFrames"]):
             frameNumber = frameNumFromName(filename)
             imgInd = frameNumber - firstFrameNum
-            imgArray[fiberNum, imgInd] = 1#counts / float(numpy.max(detectedFiber["counts"]))
-            plt.plot(fiberNum, imgInd, ".k")
+            imgArray[fiberNum, imgInd] = counts / float(numpy.max(detectedFiber["counts"]))
+            # plt.plot(fiberNum, imgInd, ".k")
 
-    # plt.imshow(imgArray, interpolation="none")
+    plt.imshow(imgArray, interpolation="none")
     nfn = os.path.join(imgDir, "fiberMap.png")
     plt.show()
     #fig.savefig(nfn)
