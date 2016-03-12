@@ -141,7 +141,7 @@ class DetectedFiberList(object):
         # imgData = scipy.ndimage.gaussian_filter(imgData, 1, mode="nearest")
         #plt.figure();plt.imshow(imgData);plt.show()
         pyGuideCentroids = PyGuide.findStars(imgData, None, None, self.ccdInfo)[0]
-
+        brightestCentroid = pyGuideCentroids[0]
         # fig = plt.figure(figsize=(10,10));plt.imshow(imgData, vmin=0, vmax=10)#plt.show(block=False)
         # plt.scatter(0, 0, s=80, facecolors='none', edgecolors='b')
         # for centroid in pyGuideCentroids:
@@ -164,24 +164,22 @@ class DetectedFiberList(object):
         # if they were not previously detected, create a new detection
         # print("found ", len(pyGuideCentroids), "fibers ")
         # prevDetections = self.lastFrameDetectionsf
-        for ind, pyGuideFind in enumerate(pyGuideCentroids):
+        # for ind, pyGuideFind in enumerate(pyGuideCentroids):
             # print("found", pyGuideFind.xyCtr, pyGuideFind.counts, pyGuideFind.rad)
             # is this a new dectection or was it found already in the previous image?
-            isNewDetection = True
-            for prevDetection in self.lastFrameDetections: #self.detectedFibers:
-                if prevDetection.belongs2me(pyGuideFind):
-                    if isNewDetection == False:
-                        raise RuntimeError("This shouldn't ever happen")
-                    # print("previous detection!!!", pyGuideFind.xyCtr)
-                    isNewDetection = False
-                    prevDetection.add2me(pyGuideFind, imageFile)
-                    break # assign to the first that works???
-                # was this is a new detection?
-            if isNewDetection:
-                print('new detection: img', imageFile)
-                self.detectedFibers.append(DetectedFiber(pyGuideFind, imageFile))
-            if ind == 0:
-                break # only detect up to two fibers in the same frame
+        isNewDetection = True
+        for prevDetection in self.lastFrameDetections: #self.detectedFibers:
+            if prevDetection.belongs2me(brightestCentroid):
+                if isNewDetection == False:
+                    raise RuntimeError("This shouldn't ever happen")
+                # print("previous detection!!!", brightestCentroid.xyCtr)
+                isNewDetection = False
+                prevDetection.add2me(brightestCentroid, imageFile)
+                # break # assign to the first that works???
+            # was this is a new detection?
+        if isNewDetection:
+            print('new detection: img', imageFile)
+            self.detectedFibers.append(DetectedFiber(brightestCentroid, imageFile))
         self.prevFrames.append(imageFile)
 
 def batchProcess(imageFileDirectory, flatImg, frameStartNum, frameEndNum=None, imgBaseName="img", imgExtension="bmp"):

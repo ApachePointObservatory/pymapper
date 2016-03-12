@@ -8,7 +8,7 @@ import itertools
 import numpy
 
 import matplotlib
-matplotlib.use("Agg")
+#matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 def frameNumFromName(imgName, imgBase="img", imgExt="bmp"):
@@ -29,15 +29,16 @@ if __name__ == "__main__":
 
     # create visualization
     imgArray = numpy.zeros((nDetectedFibers, lastFrameNum-firstFrameNum+1))
+    fig = plt.figure(figsize=(20,5))
     for fiberNum, detectedFiber in enumerate(detectedFiberList):
         for counts, filename in itertools.izip(detectedFiber["counts"], detectedFiber["imageFrames"]):
             frameNumber = frameNumFromName(filename)
             imgInd = frameNumber - firstFrameNum
             imgArray[fiberNum, imgInd] = 1#counts / float(numpy.max(detectedFiber["counts"]))
+            plt.plot(fiberNum, imgInd, ".k")
 
-
-    fig = plt.figure(figsize=(20,5))
-    plt.imshow(imgArray, interpolation="none")
+    # plt.imshow(imgArray, interpolation="none")
     nfn = os.path.join(imgDir, "fiberMap.png")
-    fig.savefig(nfn)
-    plt.close(fig)    # close the figure
+    plt.show()
+    #fig.savefig(nfn)
+    #plt.close(fig)    # close the figure
