@@ -86,9 +86,9 @@ class DetectedFiber(object):
         # if center moves by more than 0.25 pixels
         # doesn't belong
         dist = numpy.linalg.norm(numpy.subtract(pyGuideCentroid.xyCtr, self.xyCtr))
-        if dist < 2:
+        if dist < 3:
             print("belongs to", dist, self.imageFrames)
-        return dist < 2
+        return dist < 3
         # print("dist!", dist, self.imageFrames)
         # return dist<(self.rad/2.)
 
@@ -185,20 +185,21 @@ class DetectedFiberList(object):
             if isNewDetection:
                 print('new detection:', os.path.split(imageFile)[-1], brightestCentroid.counts, brightestCentroid.xyCtr)
                 self.detectedFibers.append(DetectedFiber(brightestCentroid, imageFile))
+
         # self.prevFrames.append(imageFile)
-        color = "r" if isNewDetection else "b"
-        fig = plt.figure(figsize=(10,10));plt.imshow(imgData, vmin=0, vmax=10)#plt.show(block=False)
-        plt.scatter(0, 0, s=80, facecolors='none', edgecolors='b')
-        if brightestCentroid is not None:
-            x,y = brightestCentroid.xyCtr
-            plt.scatter(x, y, s=80, facecolors='none', edgecolors=color)
-        zfilled = "%i"%frameNumber
-        zfilled = zfilled.zfill(5)
-        dd = os.path.split(imageFile)[0]
-        nfn = os.path.join(dd, "pyguide%s.png"%zfilled)
-        fig.savefig(nfn); plt.close(fig)    # close the figure
-        if crashMe:
-            raise RuntimeError("Non-unique detection!!!!")
+        # color = "r" if isNewDetection else "b"
+        # fig = plt.figure(figsize=(10,10));plt.imshow(imgData, vmin=0, vmax=10)#plt.show(block=False)
+        # plt.scatter(0, 0, s=80, facecolors='none', edgecolors='b')
+        # if brightestCentroid is not None:
+        #     x,y = brightestCentroid.xyCtr
+        #     plt.scatter(x, y, s=80, facecolors='none', edgecolors=color)
+        # zfilled = "%i"%frameNumber
+        # zfilled = zfilled.zfill(5)
+        # dd = os.path.split(imageFile)[0]
+        # nfn = os.path.join(dd, "pyguide%s.png"%zfilled)
+        # fig.savefig(nfn); plt.close(fig)    # close the figure
+        # if crashMe:
+        #     raise RuntimeError("Non-unique detection!!!!")
 
 def batchProcess(imageFileDirectory, flatImg, frameStartNum, frameEndNum=None, imgBaseName="img", imgExtension="bmp"):
     """! Process all images in given directory
@@ -230,7 +231,7 @@ def convToFits(imageFileDirectory, flatImg, frameStartNum, frameEndNum=None, img
     saveImage()
 
 if __name__ == "__main__":
-    imgDir = "/home/lcomapper/Desktop/mappertestingMarch/run6"
+    imgDir = "/Users/csayres/Desktop/mapperPyguide/run6noFlat"
     imgBase = "img"
     flatImgList = [os.path.join(imgDir, "%s%i.bmp"%(imgBase, ii)) for ii in range(1,7)]
     flatImg = createFlat(flatImgList)
