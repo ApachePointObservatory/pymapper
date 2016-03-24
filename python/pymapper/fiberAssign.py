@@ -9,8 +9,8 @@ import glob
 import numpy
 from scipy.optimize import fmin
 
-import matplotlib
-#matplotlib.use("Agg")
+# import matplotlib
+# matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from sdss.utilities.yanny import yanny
@@ -25,7 +25,10 @@ DEBUG = False
 # for fitting scale, tranlation, rotation to fiber positions
 FWHMCOARSE = 5 # mm
 FWHMFINE = 0.1 # mm
-MATCHTHRESH = 3 #mm (require a match to be within this threshold to be considered robust)
+MMPERINCH = 25.4 # mm per inch
+# plates have 32 inch diameter
+PLATERADIUS = 32 * MMPERINCH / 2.
+# MATCHTHRESH = 3 #mm (require a match to be within this threshold to be considered robust)
 
 class ModeledTrace(object):
     def __init__(self, fiberSpacing, blockSpacing):
@@ -178,6 +181,46 @@ class PlPlugMap(object):
         filename = "plPlugMapM-%i-%i-%s.par"%(self.plateID, mjd, scanNumStr)
         self.plPlugMap.write(os.path.join(writeDir, filename))
 
+    def plotMissing(self):
+        tabHeight = 0.5 * MMPERINCH
+        tabWidth = 0.8 * MMPERINCH
+        plt.figure(figsize=(10,10))
+        plt.box(on=True)
+        radLimit = PLATERADIUS + tabHeight + 10 #mm
+        limits = (-1*radLimit, radLimit)
+        plt.xlim(limits)
+        plt.ylim(limits)
+        # plot the plate circle
+        thetas = numpy.linspace(0, 2*numpy.pi, 1000)
+        plateX = PLATERADIUS * numpy.cos(thetas)
+        plateY = PLATERADIUS * numpy.sin(thetas)
+        # determine angle from tabWitdh
+        totalCircumference = 2 * numpy.pi * PLATERADIUS
+        tabFraction = tabWidth / totalCircumference
+        tabAngularFraction = tabFraction * numpy.pi * 0.95 # by eye tweaking
+        # replace the radii around the tab with something longer
+        tabArgs = numpy.nonzero(numpy.logical_and(thetas < 1.5 * numpy.pi + tabAngularFraction, thetas > 1.5 * numpy.pi - tabAngularFraction))
+        plateX[tabArgs] = (PLATERADIUS+tabHeight)*numpy.cos(thetas[tabArgs])
+        plateY[tabArgs] = (PLATERADIUS+tabHeight)*numpy.sin(thetas[tabArgs])
+        # diameter is 32 inches
+        plt.plot(plateX, plateY, "-k")
+        # plot found fibers:
+        for objInd in self.objectInds:
+            xPos = self.plPlugMap["PLUGMAPOBJ"]["xFocal"][objInd]
+            yPos = self.plPlugMap["PLUGMAPOBJ"]["yFocal"][objInd]
+            fiberID = self.plPlugMap["PLUGMAPOBJ"]["fiberId"][objInd]
+            if fiberID == -1:
+                # fiber not found
+                marker = "x" # red x
+                color = "red"
+            else:
+                # fiber found
+                marker = "o" # blue circle
+                color = "black"
+            plt.plot(xPos, yPos, marker=marker, color=color, fillstyle="none", mew=2)
+        plt.show(block=True)
+
+
 
 class FocalSurfaceSolver(object):
     def __init__(self, detectedFiberList, plPlugMapFile):
@@ -194,6 +237,7 @@ class FocalSurfaceSolver(object):
         throughputList = self.getThroughputList()
         self.plPlugMap.enterMappedData(self.measPosInds, throughputList, self.plPlugMapInds)
         self.plPlugMap.writeMe("/Users/csayres/Desktop/", 55555)
+        self.plPlugMap.plotMissing()
 
     def getThroughputList(self):
         # throughput is undefined here, choose to report max counts
@@ -226,7 +270,7 @@ class FocalSurfaceSolver(object):
         return measXPos, measYPos
 
     def plot(self, measx, measy, block=False):
-        fig = plt.figure()
+        plt.figure()
         plt.plot(self.plPlugMap.xPos, self.plPlugMap.yPos, 'or')
         plt.plot(measx, measy, 'ok')
         plt.show(block=block)
@@ -266,7 +310,7 @@ class FocalSurfaceSolver(object):
         """
         # compute all pairwise differences
         # could be vectorized if needed...
-        # this function is evaluated a lot by the minimizer.
+        # after all this function is evaluated a lot by the minimizer.
         totalEnergy = 0
         for x, y in itertools.izip(xPos, yPos):
             dist = numpy.sqrt((self.plPlugMap.xPos-x)**2+(self.plPlugMap.yPos-y)**2)
@@ -319,9 +363,6 @@ class FocalSurfaceSolver(object):
         for measInd, (xPos, yPos) in enumerate(itertools.izip(xArray, yArray)):
             dist = numpy.sqrt((self.plPlugMap.xPos - xPos)**2+(self.plPlugMap.yPos - yPos)**2)
             plInd = numpy.argmin(dist)
-            # indSorted = numpy.argsort(dist)
-            # plInd = indSorted[0]
-            minDist = dist[plInd]
             if plInd in plPlugMapInds:
                 # this index was already matched to another
                 # put it in the multimatch index
@@ -330,16 +371,8 @@ class FocalSurfaceSolver(object):
                 plPlugMapInds.pop(badIndex)
                 measPosInds.pop(badIndex)
             else:
-            # be very conservative, only keep matches
-                # if minDist > MATCHTHRESH:
-                #     continue
-                # assert plInd not in plPlugMapInds, "%i already matched!!!, scaling, translation, rotation must be bad!"%plInd
                 plPlugMapInds.append(plInd)
                 measPosInds.append(measInd)
-            # err.append(minDist)
-            # rad = numpy.sqrt(xPos**2+yPos**2)
-            # rads.append(rad)
-            # print("err", minDist, rad)
 
         # did we get the expected amount of matches?
         print("got ", len(plPlugMapInds), "matches", len(multiMatchInds), "multimatches")
@@ -364,7 +397,7 @@ class FocalSurfaceSolver(object):
         # is this the same solution as the previous? if so complain now (we aren't getting anywhere)
         # @todo, implement later!!!!
         print("iter", currentCall, "fit model", transRotScaleSolution)
-        # apply this new model to ever point and call this routine again
+        # apply this new (tweaked) model to every point and call this routine again
         # (until we get all matches found)
         xyArray = numpy.asarray([xArray, yArray]).T
         newPositions = fitTransRotScale.model.apply(xyArray, doInverse=True)
