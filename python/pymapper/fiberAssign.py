@@ -2,27 +2,34 @@
 """
 from __future__ import division, absolute_import
 
-import sdss
-
 import os
 import itertools
+import glob
 
 import numpy
-from scipy import stats
+from scipy.optimize import fmin
 
 import matplotlib
 #matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+from sdss.utilities.yanny import yanny
+from fitPlugPlateMeas.fitData import TransRotScaleModel, ModelFit
 
 # spacing between blocks (measured empirically), units are adjacent fiber spacing
 # turns out to be better to just use the same spacing for every block...
 # BlockSpaceMultiplier = [1.928, 1.868, 1.828, 1.877, 1.910, 1.805, 1.980, 1.917, 1.887]
 
 DEBUG = False
+# fwhm are used to build gaussians in a minimizing "energy" function
+# for fitting scale, tranlation, rotation to fiber positions
+FWHMCOARSE = 5 # mm
+FWHMFINE = 0.1 # mm
+MATCHTHRESH = 3 #mm (require a match to be within this threshold to be considered robust)
 
 class ModeledTrace(object):
     def __init__(self, fiberSpacing, blockSpacing):
-        """Model for a slithead trace
+        """Model for a slithead trace, units are frames for fiber/blockSpacing
         """
         self.nBlocks = 10
         self.fibersPerBlock = 30
@@ -132,11 +139,248 @@ class ModeledTrace(object):
 
         return allMissingFibers
 
+class PlPlugMap(object):
+    def __init__(self, plPlugMapFile):
+        self.plPlugMap = yanny(filename=plPlugMapFile, np=True)
+        self.objectInds = numpy.argwhere(self.plPlugMap["PLUGMAPOBJ"]["holeType"]=="OBJECT")
+        self.xPos = self.plPlugMap["PLUGMAPOBJ"]["xFocal"][self.objectInds].flatten()
+        self.yPos = self.plPlugMap["PLUGMAPOBJ"]["yFocal"][self.objectInds].flatten()
+        self.radPos = numpy.sqrt(self.xPos**2+self.yPos**2)
+        self.plateID = int(self.plPlugMap["plateId"])
+
+    def enterMappedData(self, mappedFiberInds, mappedFiberThroughputs, mappedPlPlugObjInds):
+        # for fibers not found enter fiberID = -1, spectrographID = -1, and throughput = 0
+        # first set spectrograph id and fiber id to -1 for all OBJECTS
+        self.plPlugMap["PLUGMAPOBJ"]["spectrographId"][self.objectInds] = -1
+        self.plPlugMap["PLUGMAPOBJ"]["fiberId"][self.objectInds] = -1
+        # throughput should already be 0....do we need to check?\
+        for plInd, fiberInd, fiberThroughput in itertools.izip(mappedPlPlugObjInds, mappedFiberInds, mappedFiberThroughputs):
+            # fiberInd is fiber number + 1 (zero indexed)
+            # plInd is index based on holeType==OBJECT only (we threw away all other types)
+            # first find out what plInd index corresponds to in scope of all holes in file
+            holeInd = self.objectInds[plInd]
+            self.plPlugMap["PLUGMAPOBJ"]["spectrographId"][holeInd] = 0
+            # because of zero index add 1, because 1-16 are reserved for guide fibers begin count at 17
+            self.plPlugMap["PLUGMAPOBJ"]["fiberId"][holeInd] = fiberInd + 1 + 16
+            self.plPlugMap["PLUGMAPOBJ"]["throughput"][holeInd] = fiberThroughput
+
+    def writeMe(self, writeDir, mjd):
+        # replace plPlugMapP-XXX with plPlugMapM-XXX
+        # previousDirectory, filename = os.path.split(self.plPlugMap.filename)
+        # determine any existing scans
+        globStr = os.path.join(writeDir, "plPlugMapM-%i-%i-*.par"%(self.plateID, mjd))
+        print("globStr", globStr)
+        nExisting = glob.glob(globStr)
+        # number this scan accordingly
+        scanNum = len(nExisting) + 1
+        scanNumStr = ("%i"%scanNum).zfill(2)
+        # construct the new file name, will not overwrite any existing (scanNumStr is incremented)
+        filename = "plPlugMapM-%i-%i-%s.par"%(self.plateID, mjd, scanNumStr)
+        self.plPlugMap.write(os.path.join(writeDir, filename))
 
 
 class FocalSurfaceSolver(object):
-    def __init__(self, detectedFiberList, plPlugMap):
-        pass
+    def __init__(self, detectedFiberList, plPlugMapFile):
+        self.detectedFiberList = detectedFiberList
+        self.plPlugMap = PlPlugMap(plPlugMapFile)
+        #self.nHistBins = 100 # number of bins for histogram
+        #self.focalRadHist, self.binEdges = numpy.histogram(self.plPlugMap.radPos, bins=self.nHistBins)
+        # self.plotRadialHist(self.plPlugMap.radPos, bins=self.binEdges)
+        # compute radial histogram of x y focal positions
+        # self.plotRadialHist(measR, bins=self.binEdges)
+        self.measXPos, self.measYPos = self.initialMeasTransforms()
+        self.fitTransRotScale()
+        self.matchMeasToPlPlugMap(self.measXPos, self.measYPos) # sets attriubte plPlugMapInds
+        throughputList = self.getThroughputList()
+        self.plPlugMap.enterMappedData(self.measPosInds, throughputList, self.plPlugMapInds)
+        self.plPlugMap.writeMe("/Users/csayres/Desktop/", 55555)
+
+    def getThroughputList(self):
+        # throughput is undefined here, choose to report max counts
+        return [numpy.max(self.detectedFiberList[ind]["counts"]) for ind in self.measPosInds]
+
+
+    def initialMeasTransforms(self):
+        # just put the measured data in the ballpark of the
+        # focal positions
+        # for initial rough scale and x,y tranlation fitting to
+        # measured data
+        measXPos, measYPos = self.getMeasuredCenters()
+        # pyguide convention +y goes down the image.  this is bad, flip it here
+        # for matching to the plPlugMap focal values
+        # also determine the rough plate center, averaging x and y
+        measXPos = measXPos - numpy.mean(measXPos)
+        measYPos = -1*(measYPos - numpy.mean(measYPos))
+        # in polar coords..
+        measR = numpy.sqrt(measXPos**2+measYPos**2)
+        measTheta = numpy.arctan2(measYPos, measXPos)
+        # determine a rough scaling based on x,y value range in plPlugMap
+        # file
+        maxPlRadPos = numpy.max(self.plPlugMap.radPos)
+        maxMeasRadPos = numpy.max(measR)
+        roughScale = maxPlRadPos / maxMeasRadPos
+        # apply the scale to the measured (polar) positions
+        measR = measR * roughScale
+        measXPos = measR * numpy.cos(measTheta)
+        measYPos = measR * numpy.sin(measTheta)
+        return measXPos, measYPos
+
+    def plot(self, measx, measy, block=False):
+        fig = plt.figure()
+        plt.plot(self.plPlugMap.xPos, self.plPlugMap.yPos, 'or')
+        plt.plot(measx, measy, 'ok')
+        plt.show(block=block)
+
+    def fitTransRotScale(self):
+        self.plot(self.measXPos, self.measYPos)
+        transx, transy = fmin(self.minimizeTranslation, [0,0], args=(FWHMCOARSE,))
+        self.plot(self.measXPos-transx, self.measYPos-transy)
+        rot, scale = fmin(self.minimizeRotScale, [0,1], args=(transx, transy, FWHMCOARSE))
+        x, y = self.applyTransRotScale(self.measXPos, self.measYPos, transx, transy, rot, scale)
+        self.plot(x, y)
+        print(transx, transy, rot, scale)
+        # now minimize all together with a finer FWHM in the "energy function"
+        transx, transy, rot, scale = fmin(self.minimizeTransRotScale, [transx, transy, rot, scale], args=(FWHMFINE,))
+        print(transx, transy, rot, scale)
+        self.measXPos, self.measYPos = self.applyTransRotScale(self.measXPos, self.measYPos, transx, transy, rot, scale)
+        self.plot(self.measXPos, self.measYPos)
+
+    def minimizeTranslation(self, transxy, fwhm):
+        transx, transy = transxy
+        x, y = self.applyTransRotScale(self.measXPos, self.measYPos, transx, transy)
+        return self.computeEnergy(x, y, fwhm)
+
+    def minimizeRotScale(self, rotScale, transx, transy, fwhm):
+        rot, scale = rotScale
+        x, y = self.applyTransRotScale(self.measXPos, self.measYPos, transx, transy, rot, scale)
+        return self.computeEnergy(x, y, fwhm)
+
+    def minimizeTransRotScale(self, transRotScale, fwhm):
+        transx, transy, rot, scale = transRotScale
+        x, y = self.applyTransRotScale(self.measXPos, self.measYPos, transx, transy, rot, scale)
+        return self.computeEnergy(x, y, fwhm)
+
+    def computeEnergy(self, xPos, yPos, fwhm = 5):
+        """place gaussian over each point in plplugmap file
+        fwhm is mm (units of plplugmap)
+        """
+        # compute all pairwise differences
+        # could be vectorized if needed...
+        # this function is evaluated a lot by the minimizer.
+        totalEnergy = 0
+        for x, y in itertools.izip(xPos, yPos):
+            dist = numpy.sqrt((self.plPlugMap.xPos-x)**2+(self.plPlugMap.yPos-y)**2)
+            # energy is a gaussian, lower distance == higher energy
+            energy = numpy.sum(numpy.exp(-1 * dist**2/(2*fwhm**2)))
+            totalEnergy += energy
+        # return negative energy because we are minimizing this
+        # print totalEnergy
+        return -1 * totalEnergy
+
+    def applyTransRotScale(self, x, y, transx, transy, rot=0, scale=1):
+        x = x - transx
+        y = y - transy
+        if rot != 0 or scale != 1:
+            r = numpy.sqrt(x**2+y**2)
+            theta = numpy.arctan2(y, x)
+            theta = theta - rot
+            r = r * scale
+            x = r * numpy.cos(theta+2*numpy.pi)
+            y = r * numpy.sin(theta+2*numpy.pi)
+        return x, y
+
+    def getMeasuredCenters(self):
+        # return x,y coordinate list for detections
+        # "centroid" detection by weighted counts..
+        detectionCenters = []
+        for detectedFiber in self.detectedFiberList:
+            xyCenters = [numpy.asarray(xyCenter) for xyCenter in detectedFiber["xyCtrs"]]
+            counts = detectedFiber["counts"]
+            detectionCenters.append(numpy.average(xyCenters, axis=0, weights=counts))
+        detectionCenters = numpy.asarray(detectionCenters)
+        xPos, yPos = detectionCenters[:,0], detectionCenters[:,1]
+        return xPos, yPos
+
+    def matchMeasToPlPlugMap(self, xArray, yArray, currentCall=0, maxCalls=10, previousSolution=None):
+        """Match measured positions to
+        those in the plPlugMap file.
+
+        recursively!!!, this routine tweaks trans, rot, and scale each time
+        """
+        if currentCall == maxCalls:
+            raise RuntimeError("Max recursion reached!!!!")
+        # brute force, compare distance to
+        # all other points, could
+        # do some nearest neighbor search
+        # or could vecorize
+        multiMatchInds = []
+        plPlugMapInds = []
+        measPosInds = []
+        for measInd, (xPos, yPos) in enumerate(itertools.izip(xArray, yArray)):
+            dist = numpy.sqrt((self.plPlugMap.xPos - xPos)**2+(self.plPlugMap.yPos - yPos)**2)
+            plInd = numpy.argmin(dist)
+            # indSorted = numpy.argsort(dist)
+            # plInd = indSorted[0]
+            minDist = dist[plInd]
+            if plInd in plPlugMapInds:
+                # this index was already matched to another
+                # put it in the multimatch index
+                multiMatchInds.append(plInd)
+                badIndex = plPlugMapInds.index(plInd)
+                plPlugMapInds.pop(badIndex)
+                measPosInds.pop(badIndex)
+            else:
+            # be very conservative, only keep matches
+                # if minDist > MATCHTHRESH:
+                #     continue
+                # assert plInd not in plPlugMapInds, "%i already matched!!!, scaling, translation, rotation must be bad!"%plInd
+                plPlugMapInds.append(plInd)
+                measPosInds.append(measInd)
+            # err.append(minDist)
+            # rad = numpy.sqrt(xPos**2+yPos**2)
+            # rads.append(rad)
+            # print("err", minDist, rad)
+
+        # did we get the expected amount of matches?
+        print("got ", len(plPlugMapInds), "matches", len(multiMatchInds), "multimatches")
+        if len(plPlugMapInds) == len(xArray):
+            # every match found, we're done!
+            self.plPlugMapInds = plPlugMapInds
+            self.measPosInds = measPosInds
+            self.measXPos = xArray
+            self.measYpos = yArray
+            return
+
+        # determine exact transrotscale solution now that we have (at least) some robust matches.
+        measPos = numpy.asarray([ [xArray[ii], yArray[ii]] for ii in measPosInds ])
+        nomPos = numpy.asarray([ [self.plPlugMap.xPos[ii], self.plPlugMap.yPos[ii]] for ii in plPlugMapInds ])
+        fitTransRotScale = ModelFit(
+            model = TransRotScaleModel(),
+            measPos = measPos,
+            nomPos = nomPos,
+            doRaise=True,
+        )
+        transRotScaleSolution = fitTransRotScale.model.getTransRotScale()
+        # is this the same solution as the previous? if so complain now (we aren't getting anywhere)
+        # @todo, implement later!!!!
+        print("iter", currentCall, "fit model", transRotScaleSolution)
+        # apply this new model to ever point and call this routine again
+        # (until we get all matches found)
+        xyArray = numpy.asarray([xArray, yArray]).T
+        newPositions = fitTransRotScale.model.apply(xyArray, doInverse=True)
+        xArray = newPositions[:,0]
+        yArray = newPositions[:,1]
+        self.matchMeasToPlPlugMap(xArray, yArray, currentCall=currentCall+1, previousSolution=transRotScaleSolution)
+
+
+
+        # plt.figure()
+        # plt.hist(rads, bins=100)
+        # plt.show(block=False)
+
+        # plt.figure()
+        # plt.hist(err, bins=100)
+        # plt.show(block=True)
 
 class SlitheadSolver(object):
     def __init__(self, detectedFiberList):
@@ -152,7 +396,7 @@ class SlitheadSolver(object):
         # for each detection determine the center frame
         # weight each frame by the detected counts
         detectionCenters = []
-        for ind, detectedFiber in enumerate(detectedFiberList):
+        for detectedFiber in detectedFiberList:
             frameNumbers = [frameNumFromName(frameName) for frameName in detectedFiber["imageFrames"]]
             counts = detectedFiber["counts"]
             detectionCenters.append(numpy.average(frameNumbers, weights=counts))
@@ -198,6 +442,7 @@ class SlitheadSolver(object):
                     if foundMax:
                         # only allow one detection to equal 1 (the first found)
                         # to ease in searching for detections later
+                        # i suppose this could happen if pixels are saturated
                         normalizedCounts = 0.999
                     else:
                         foundMax = True
@@ -242,7 +487,7 @@ if __name__ == "__main__":
     # plt.show()
 
     SlitheadSolver(detectedFiberList)
-
+    fss = FocalSurfaceSolver(detectedFiberList, os.path.join(imgDir, "plPlugMapP-8787.par"))
     # maxDetect, imgFrames = extractMax(detectedFiberList)
     # plt.hist(numpy.diff(imgFrames), bins=200)
     # plt.show()

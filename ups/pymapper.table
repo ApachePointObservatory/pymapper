@@ -1,5 +1,6 @@
 setupOptional("idlmapper")
 setupRequired("sdss_python_module")
+setupRequired("fitPlugPlateMeas")
 setupOptional("vimba")
 pathPrepend(PATH, ${PRODUCT_DIR}/bin)
 pathPrepend(PYTHONPATH, ${PRODUCT_DIR}/python)
