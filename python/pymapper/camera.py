@@ -75,5 +75,5 @@ class Camera(object):
 if __name__ == "__main__":
     camera = Camera()
     camera.start()
-    reactor.callLater(4, camera.stop)
+    reactor.callLater(3*60., camera.stop)
     reactor.run()
