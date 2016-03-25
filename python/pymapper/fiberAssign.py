@@ -32,7 +32,7 @@ PLATERADIUS = 32 * MMPERINCH / 2.
 
 class ModeledTrace(object):
     def __init__(self, fiberSpacing, blockSpacing):
-        """Model for a slithead trace, units are frames for fiber/blockSpacing
+        """Model for a slithead trace, units are frames for both fiber and blockSpacing
         """
         self.nBlocks = 10
         self.fibersPerBlock = 30
@@ -142,6 +142,74 @@ class ModeledTrace(object):
 
         return allMissingFibers
 
+class SlitheadSolver(object):
+    def __init__(self, detectedFiberList):
+        """List of detections
+        """
+        self.detectedFiberList = detectedFiberList
+        self.totalFiberNum = 300
+        self.detectedFiberNum = len(detectedFiberList)
+        self.missingFiberNum = self.totalFiberNum - self.detectedFiberNum
+        self.firstFrameNum = frameNumFromName(detectedFiberList[0]["imageFrames"][0])
+        self.lastFrameNum = frameNumFromName(detectedFiberList[-1]["imageFrames"][-1])
+        self.totalFrames = self.lastFrameNum - self.firstFrameNum + 1
+        # for each detection determine the center frame
+        # weight each frame by the detected counts
+        detectionCenters = []
+        for detectedFiber in detectedFiberList:
+            frameNumbers = [frameNumFromName(frameName) for frameName in detectedFiber["imageFrames"]]
+            counts = detectedFiber["counts"]
+            detectionCenters.append(numpy.average(frameNumbers, weights=counts))
+        diffDetectionCenters = numpy.diff(detectionCenters)
+        roughFiberSpacing = numpy.median(diffDetectionCenters)
+        # throw out outliers and recompute.  This probably doesn't do much
+        self.fiberSpacing = numpy.median(diffDetectionCenters[numpy.nonzero(diffDetectionCenters < roughFiberSpacing*1.3)])
+        # for determining individual block spacing...must have all detections in all fibers...
+        # print("block space 1", (detectionCenters[30]-detectionCenters[29])/self.fiberSpacing)
+        # print("block space 2", (detectionCenters[60]-detectionCenters[59])/self.fiberSpacing)
+        # print("block space 3", (detectionCenters[90]-detectionCenters[89])/self.fiberSpacing)
+        # print("block space 4", (detectionCenters[120]-detectionCenters[119])/self.fiberSpacing)
+        # print("block space 5", (detectionCenters[150]-detectionCenters[149])/self.fiberSpacing)
+        # print("block space 6", (detectionCenters[180]-detectionCenters[179])/self.fiberSpacing)
+        # print("block space 7", (detectionCenters[210]-detectionCenters[209])/self.fiberSpacing)
+        # print("block space 8", (detectionCenters[240]-detectionCenters[239])/self.fiberSpacing)
+        # print("block space 9", (detectionCenters[270]-detectionCenters[269])/self.fiberSpacing)
+        self.blockSpacing = numpy.median(diffDetectionCenters[numpy.nonzero(diffDetectionCenters > self.fiberSpacing*1.3)])
+        self.normalizedMeasuredTrace = self.getNormalizedMeasuredTrace()
+        self.modeledTrace = ModeledTrace(self.fiberSpacing, self.blockSpacing)
+        # get missing fibers
+        self.missingFiberNumbers = self.modeledTrace.findMissingFibers(self.normalizedMeasuredTrace, self.missingFiberNum)
+        # measuredTrace = self.getMeasuredTrace()
+        # self.plotTrace(measuredTrace)
+        # optimalTrace = self.getOptimalTrace()
+        # self.plotTrace(optimalTrace)
+
+    def getNormalizedMeasuredTrace(self):
+        # construct from the detectedFiberList
+        # Counts are normalized by max value (thus cannot exceed 1)
+        # if multiple frames share a maximum value, force all except the first
+        # to a lower value.  Allow only one to have the max value
+        # this is for later searching
+        measuredTrace = numpy.zeros(self.totalFrames)
+        for detectedFiber in self.detectedFiberList:
+            maxCounts = numpy.max(detectedFiber["counts"])
+            foundMax = False
+            for imgFrame, counts in itertools.izip(detectedFiber["imageFrames"], detectedFiber["counts"]):
+                frameNumber = frameNumFromName(imgFrame)
+                traceInd = frameNumber - self.firstFrameNum
+                normalizedCounts = counts / maxCounts
+                if normalizedCounts == 1:
+                    if foundMax:
+                        # only allow one detection to equal 1 (the first found)
+                        # to ease in searching for detections later
+                        # i suppose this could happen if pixels are saturated
+                        normalizedCounts = 0.999
+                    else:
+                        foundMax = True
+                assert measuredTrace[traceInd] == 0, "already counts found in this frame?!?!"
+                measuredTrace[traceInd] = normalizedCounts
+        return measuredTrace
+
 class PlPlugMap(object):
     def __init__(self, plPlugMapFile):
         self.plPlugMap = yanny(filename=plPlugMapFile, np=True)
@@ -215,7 +283,7 @@ class PlPlugMap(object):
                 color = "red"
             else:
                 # fiber found
-                marker = "o" # blue circle
+                marker = "o" #circle
                 color = "black"
             plt.plot(xPos, yPos, marker=marker, color=color, fillstyle="none", mew=2)
         plt.show(block=True)
@@ -240,9 +308,8 @@ class FocalSurfaceSolver(object):
         self.plPlugMap.plotMissing()
 
     def getThroughputList(self):
-        # throughput is undefined here, choose to report max counts
+        # report max counts as throughput, what should the true definition be?
         return [numpy.max(self.detectedFiberList[ind]["counts"]) for ind in self.measPosInds]
-
 
     def initialMeasTransforms(self):
         # just put the measured data in the ballpark of the
@@ -276,14 +343,21 @@ class FocalSurfaceSolver(object):
         plt.show(block=block)
 
     def fitTransRotScale(self):
+        """Use a minimizer to get translation, rotation and scale close enough
+        to determine (hopefully many) robust matches.
+        """
         self.plot(self.measXPos, self.measYPos)
+        # step 1 rough fit tranlation
         transx, transy = fmin(self.minimizeTranslation, [0,0], args=(FWHMCOARSE,))
         self.plot(self.measXPos-transx, self.measYPos-transy)
+
+        # step 2 rough fig scale and rot
         rot, scale = fmin(self.minimizeRotScale, [0,1], args=(transx, transy, FWHMCOARSE))
         x, y = self.applyTransRotScale(self.measXPos, self.measYPos, transx, transy, rot, scale)
         self.plot(x, y)
         print(transx, transy, rot, scale)
-        # now minimize all together with a finer FWHM in the "energy function"
+
+        # step 3, re fit trans rot scale together, with tighter gaussians around the target points
         transx, transy, rot, scale = fmin(self.minimizeTransRotScale, [transx, transy, rot, scale], args=(FWHMFINE,))
         print(transx, transy, rot, scale)
         self.measXPos, self.measYPos = self.applyTransRotScale(self.measXPos, self.measYPos, transx, transy, rot, scale)
@@ -347,7 +421,8 @@ class FocalSurfaceSolver(object):
 
     def matchMeasToPlPlugMap(self, xArray, yArray, currentCall=0, maxCalls=10, previousSolution=None):
         """Match measured positions to
-        those in the plPlugMap file.
+        those in the plPlugMap file.  Exactly (in a least squares sense) solve for
+        translation rotation and scale using only robust matches.  Iterate until we have all of em.
 
         recursively!!!, this routine tweaks trans, rot, and scale each time
         """
@@ -414,74 +489,6 @@ class FocalSurfaceSolver(object):
         # plt.figure()
         # plt.hist(err, bins=100)
         # plt.show(block=True)
-
-class SlitheadSolver(object):
-    def __init__(self, detectedFiberList):
-        """! detectedFiberList
-        """
-        self.detectedFiberList = detectedFiberList
-        self.totalFiberNum = 300
-        self.detectedFiberNum = len(detectedFiberList)
-        self.missingFiberNum = self.totalFiberNum - self.detectedFiberNum
-        self.firstFrameNum = frameNumFromName(detectedFiberList[0]["imageFrames"][0])
-        self.lastFrameNum = frameNumFromName(detectedFiberList[-1]["imageFrames"][-1])
-        self.totalFrames = self.lastFrameNum - self.firstFrameNum + 1
-        # for each detection determine the center frame
-        # weight each frame by the detected counts
-        detectionCenters = []
-        for detectedFiber in detectedFiberList:
-            frameNumbers = [frameNumFromName(frameName) for frameName in detectedFiber["imageFrames"]]
-            counts = detectedFiber["counts"]
-            detectionCenters.append(numpy.average(frameNumbers, weights=counts))
-        diffDetectionCenters = numpy.diff(detectionCenters)
-        roughFiberSpacing = numpy.median(diffDetectionCenters)
-        # throw out outliers and recompute.  This probably doesn't do much
-        self.fiberSpacing = numpy.median(diffDetectionCenters[numpy.nonzero(diffDetectionCenters < roughFiberSpacing*1.3)])
-        # for determining individual block spacing...must have all detections in all fibers...
-        # print("block space 1", (detectionCenters[30]-detectionCenters[29])/self.fiberSpacing)
-        # print("block space 2", (detectionCenters[60]-detectionCenters[59])/self.fiberSpacing)
-        # print("block space 3", (detectionCenters[90]-detectionCenters[89])/self.fiberSpacing)
-        # print("block space 4", (detectionCenters[120]-detectionCenters[119])/self.fiberSpacing)
-        # print("block space 5", (detectionCenters[150]-detectionCenters[149])/self.fiberSpacing)
-        # print("block space 6", (detectionCenters[180]-detectionCenters[179])/self.fiberSpacing)
-        # print("block space 7", (detectionCenters[210]-detectionCenters[209])/self.fiberSpacing)
-        # print("block space 8", (detectionCenters[240]-detectionCenters[239])/self.fiberSpacing)
-        # print("block space 9", (detectionCenters[270]-detectionCenters[269])/self.fiberSpacing)
-        self.blockSpacing = numpy.median(diffDetectionCenters[numpy.nonzero(diffDetectionCenters > self.fiberSpacing*1.3)])
-        self.normalizedMeasuredTrace = self.getNormalizedMeasuredTrace()
-        self.modeledTrace = ModeledTrace(self.fiberSpacing, self.blockSpacing)
-        # get missing fibers
-        self.missingFiberNumbers = self.modeledTrace.findMissingFibers(self.normalizedMeasuredTrace, self.missingFiberNum)
-        # measuredTrace = self.getMeasuredTrace()
-        # self.plotTrace(measuredTrace)
-        # optimalTrace = self.getOptimalTrace()
-        # self.plotTrace(optimalTrace)
-
-    def getNormalizedMeasuredTrace(self):
-        # construct from the detectedFiberList
-        # Counts are normalized by max value (thus cannot exceed 1)
-        # if multiple frames share a maximum value, force all except the first
-        # to a lower value.  Allow only one to have the max value
-        # this is for later searching
-        measuredTrace = numpy.zeros(self.totalFrames)
-        for detectedFiber in self.detectedFiberList:
-            maxCounts = numpy.max(detectedFiber["counts"])
-            foundMax = False
-            for imgFrame, counts in itertools.izip(detectedFiber["imageFrames"], detectedFiber["counts"]):
-                frameNumber = frameNumFromName(imgFrame)
-                traceInd = frameNumber - self.firstFrameNum
-                normalizedCounts = counts / maxCounts
-                if normalizedCounts == 1:
-                    if foundMax:
-                        # only allow one detection to equal 1 (the first found)
-                        # to ease in searching for detections later
-                        # i suppose this could happen if pixels are saturated
-                        normalizedCounts = 0.999
-                    else:
-                        foundMax = True
-                assert measuredTrace[traceInd] == 0, "already counts found in this frame?!?!"
-                measuredTrace[traceInd] = normalizedCounts
-        return measuredTrace
 
 def frameNumFromName(imgName, imgBase="img", imgExt="bmp"):
     return int(imgName.split(imgBase)[-1].split(".%s"%imgExt)[0])
