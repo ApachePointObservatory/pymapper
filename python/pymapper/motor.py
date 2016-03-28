@@ -9,14 +9,14 @@ from twisted.internet import reactor
 
 #@todo, implement timeouts
 
-# HOSTNAME = "map-laser.astro.washington.edu"
-HOSTNAME = "localhost"
+HOSTNAME = "map-laser.astro.washington.edu"
+# HOSTNAME = "localhost"
 PORT = 15000
-STARTPOS = 10 #mm
+STARTPOS = 27 #mm
 #ENDPOS = 100 #mm
-ENDPOS = 15 #mm
-SCANSPEED = 0.5 ## mm/sec
-QUICKSPEED = 1 ## mm/sec
+ENDPOS = 137 #mm
+SCANSPEED = 1 ## mm/sec
+QUICKSPEED = 1.2 ## mm/sec
 
 class Command(object):
     def __init__(self, cmdStr, callFunc=None, timeout=0):

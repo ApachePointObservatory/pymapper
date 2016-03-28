@@ -6,11 +6,13 @@ from math import floor
 import os
 import glob
 
+from twisted.internet import reactor
+
 from sdss.utilities.astrodatetime import datetime
 
-from .camera import Camera
-from .imgProcess import DetectedFiberList
-from .motor import MotorController
+from pymapper.camera import Camera
+# from pymapper.imgProcess import DetectedFiberList
+from pymapper.motor import MotorController
 
 homedir = os.path.expanduser("~")
 scandir = os.path.join(homedir, "scan")
@@ -34,7 +36,7 @@ if __name__ == "__main__":
     MJD = floor(datetime.now().mjd)
     print("MJD: %i"%MJD)
     #create mjd directory
-    mjddir = os.path.join(scandir, str(MJD))
+    mjddir = os.path.join(scandir, "%i"%MJD)
     if not os.path.exists(mjddir):
         os.makedirs(mjddir)
     # determine which scan number (dont overwrite any existing)
@@ -42,11 +44,13 @@ if __name__ == "__main__":
     print("scanNumber %i"%scanNumber)
     # create directory to hold camera images
     imageDir = os.path.join(mjddir, "rawImage-%i-%i-%i"%(plateID, MJD, scanNumber))
-    os.makedirs(imageDir)
+    if not os.path.exists(imageDir):
+        os.makedirs(imageDir)
+    # note all previous images will be removed if image dir is not empty
     camera = Camera(imageDir)
 
     # setup object that finds and holds detections
-    detectedFiberList = DetectedFiberList()
+    # detectedFiberList = DetectedFiberList()
 
     # construct motor, nothing happens until connect is called
     motorController = MotorController()
@@ -54,24 +58,27 @@ if __name__ == "__main__":
     # set up callback chains for mapping process
 
     def stopCamera():
+        print("stopCamera")
         # motor is done scanning, kill camera
-        camera.stop()
+        camera.stopAcquisition()
 
     def moveMotor():
         # camera is acquiring begin moving motor/laser
+        print("moveMotor")
         motorController.scan(callFunc=stopCamera)
 
     def startCamera():
         # motor is ready to move, begin snapping pics
+        print("startCamera")
         camera.beginAcquisition(callFunc=moveMotor)
 
     motorController.addReadyCallback(startCamera)
     # hand fiber detection routine to the camera, so it is called
     # when any new frame is available
-    camera.addProcImgCall(detectedFiberList.processImage)
+    # camera.addProcImageCall(detectedFiberList.processImage)
     # connecting to the motor starts it all off
     motorController.connect()
-
+    reactor.run()
 
 
 
