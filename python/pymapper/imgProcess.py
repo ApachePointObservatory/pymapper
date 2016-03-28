@@ -100,7 +100,7 @@ class DetectedFiber(object):
         return imageFrameName in self.imageFrames
 
 class DetectedFiberList(object):
-    def __init__(self, flatImg):
+    def __init__(self, flatImg=None):
         self.ccdInfo = PyGuide.CCDInfo(bias=50, readNoise=10, ccdGain=1)
         # detected fibers is keyed by imageName
         self.detectedFibers = []
@@ -108,6 +108,13 @@ class DetectedFiberList(object):
         # self.prevFrames = collections.deque([], maxlen=4)
 
     def pickle(self, fileName):
+        # save detections to picked file
+        output = open(fileName, "wb")
+        pickle.dump(self.export(), output)
+        output.close()
+
+    def export(self):
+        # create a list of dics for picle-ability
         detectedFibers = []
         for detectedFiber in self.detectedFibers:
             detectedFibers.append(
@@ -117,11 +124,7 @@ class DetectedFiberList(object):
                     ("xyCtrs", [centroid.xyCtr for centroid in detectedFiber.centroids]),
                 ))
             )
-
-        # save detections to picked file
-        output = open(fileName, "wb")
-        pickle.dump(detectedFibers, output)
-        output.close()
+        return detectedFibers
 
     # @property
     # def lastFrameDetections(self):
@@ -136,7 +139,7 @@ class DetectedFiberList(object):
     #                 break
     #     return previousFibers
 
-    def processImage(self, imageFile, frameNumber):
+    def processImage(self, imageFile, frameNumber=None):
         """! Process a single image
 
         @param[in] imageFile. String

@@ -97,24 +97,26 @@ class MotorController(object):
         self.currCmd.setDone()
         self.commandQueue = []
         self.isHomed = False
-        connDeferred = self.connect()
-        # when connection is ready
-        # setup the protocol (giving us read/write access to device)
+
+    def addReadyCallback(self, readyCallback):
+        self.readyCallback = readyCallback
+
+    def connect(self):
+        """Returns a deferred
+        """
+        point = TCP4ClientEndpoint(reactor, self.hostname, self.port)
+        connDeferred = point.connect(self.mcf)
         connDeferred.addCallback(self.gotProtocol)
         # and then prepare the controller to scan!
         connDeferred.addCallback(self.prepareToScan)
         # if the connection failed, let us know
         connDeferred.addErrback(self.connFailed)
 
-    def connect(self):
-        """Returns a deferred
-        """
-        point = TCP4ClientEndpoint(reactor, self.hostname, self.port)
-        return point.connect(self.mcf)
-
     def disconnect(self):
         print("disconnecting from ASCII server")
         return self.protocol.transport.loseConnection()
+        print("killing twisted event loop")
+        # reactor.stop()
 
     def connFailed(self, failure):
         print("conn failed errback")
@@ -137,6 +139,8 @@ class MotorController(object):
     def scan(self, callFunc=None):
         self.move(ENDPOS)
         self.laserOff(callFunc=callFunc)
+        # send motor back to start position
+        self.resetAfterScan()
 
     def resetAfterScan(self):
         print("resetAfterScan")

@@ -23,30 +23,43 @@ EXE = "AsynchronousGrabWrite"
 BASENAME = "img"
 EXTENSION = "bmp"
 
-testDir = os.path.join(os.environ["PYMAPPER_DIR"], "tests")
+# self.imageDir = os.path.join(os.environ["PYMAPPER_DIR"], "tests")
 
 class Camera(object):
-    def __init__(self):
+    def __init__(self, imageDir):
         self.fileNum = 1
         self.timeStamps = []
         self.imgLoadTimes = []
         self.watchLoop = LoopingCall(self.watchDirectory)
         self.process = None
+        self.imageDir = imageDir
+        assert os.path.exists(imageDir), "%s doesn't exist, create it"%imageDir
         # clean up any existing files
-        for f in glob.glob(os.path.join(testDir, "*.%s"%EXTENSION)):
+        for f in glob.glob(os.path.join(self.imageDir, "*.%s"%EXTENSION)):
             os.remove(f)
         self.imageBuffer = []
+        self.acquisionCB = None
+        self.procImgCall = None
+
+    def addProcImageCall(self, callFunc):
+        # callFunc receives path to file
+        self.procImgCall = callFunc
 
     def getCurrFile(self):
         return self.getNthFile(self.fileNum)
 
     def getNthFile(self, fileNum):
         filename = "%s%i.%s"%(BASENAME, fileNum, EXTENSION)
-        return os.path.join(testDir, filename)
+        return os.path.join(self.imageDir, filename)
 
-    def start(self):
+    def beginAcquisition(self, callFunc=None):
+        """call callFunc when acquision has started
+        """
+        if callFunc is not None:
+            self.acquisitionCB = callFunc
         self.watchLoop.start(0.) # call repeatedly, non-blocking
-        self.process = subprocess.Popen(EXE, cwd=testDir)
+        self.process = subprocess.Popen(EXE, cwd=self.imageDir)
+
 
     def stop(self):
         self.process.kill()
@@ -62,10 +75,14 @@ class Camera(object):
     def watchDirectory(self):
         currFile = self.getCurrFile()
         if os.path.exists(currFile):
+            # when the first file is seen, call
+            # the acquisition callback
+            if self.fileNum == 1 and self.acquisionCB is not None:
+                reactor.callLater(0., self.acquisitionCB)
             self.timeStamps.append(time.time())
             self.fileNum += 1
             # free eventloop (paranoia?)
-            reactor.callLater(0, self.loadImage, currFile)
+            reactor.callLater(0, self.procImgCall, currFile)
 
     def loadImage(self, filename):
         self.imageBuffer.append(scipy.ndimage.imread(filename, flatten=True))
