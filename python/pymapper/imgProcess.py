@@ -121,6 +121,7 @@ class DetectedFiberList(object):
         self.ccdInfo = PyGuide.CCDInfo(bias=50, readNoise=10, ccdGain=1)
         # detected fibers is keyed by imageName
         self.detectedFibers = []
+        self.brightestCentroidList = []
         self.flatImg = flatImg
         # self.prevFrames = collections.deque([], maxlen=4)
 
@@ -142,6 +143,25 @@ class DetectedFiberList(object):
                 ))
             )
         return detectedFibers
+
+    def pickleCentroids(self, fileName):
+        # save detections to picked file
+        output = open(fileName, "wb")
+        pickle.dump(self.exportCentroids(), output)
+        output.close()
+
+    def exportCentroids(self):
+        # create a list of dics for picle-ability
+        detectedCentroids = []
+        for imgFrame, detectedCentroid in self.detectedCentroids:
+            detectedCentroids.append(
+                dict((
+                    ("imageFrame", imgFrame),
+                    ("counts", detectedCentroid.counts),
+                    ("xyCtr", detectedCentroid.xyCtr),
+                ))
+            )
+        return detectedCentroids
 
     # @property
     # def lastFrameDetections(self):
@@ -219,6 +239,8 @@ class DetectedFiberList(object):
         # read in the image data and apply the flat
         print("processing frame", os.path.split(imageFile)[-1])
         imgData = scipy.ndimage.imread(imageFile) #/ self.flatImg
+        if self.flatImg is not None:
+            imgData = imgData / self.flatImg
         # imgData = scipy.ndimage.gaussian_filter(imgData, 1, mode="nearest")
         #plt.figure();plt.imshow(imgData);plt.show()
         pyGuideCentroids = PyGuide.findStars(imgData, None, None, self.ccdInfo)[0]
@@ -263,10 +285,10 @@ def batchProcess(imageFileDirectory, flatImg, frameStartNum, frameEndNum=None, i
     detectedFiberList.sortDetections()
     return detectedFiberList
 
-def batchMultiprocess(imageFileDirectory, imgBaseName="img", imgExtension="bmp"):
+def batchMultiprocess(imageFileDirectory, flatImg, imgBaseName="img", imgExtension="bmp"):
     """! Process all images in given directory
     """
-    detectedFiberList = DetectedFiberList(None)
+    detectedFiberList = DetectedFiberList(flatImg)
     imageFiles = glob.glob(os.path.join(imageFileDirectory, "*."+imgExtension))
     nImageFiles = len(imageFiles)
     imageFilesSorted = [os.path.join(imageFileDirectory, "%s%i.%s"%(imgBaseName, num, imgExtension)) for num in range(1,nImageFiles)]
@@ -289,22 +311,25 @@ def convToFits(imageFileDirectory, flatImg, frameStartNum, frameEndNum=None, img
     saveImage()
 
 if __name__ == "__main__":
-    imgDir = "/home/lcomapper/scan/57476/rawImage-8787-57476-shortexp_slow_dark"
+    imgDir = "/Volumes/Boof/scan/57476/rawImage-8787-57476-shortexp"
     imgBase = "img"
-    # flatImgList = [os.path.join(imgDir, "%s%i.bmp"%(imgBase, ii)) for ii in range(1,7)]
-    # flatImg = createFlat(flatImgList)
     flatImg = None
+    nImg = len(glob.glob(os.path.join(imgDir, "img*.bmp")))
+    flatImgList = [os.path.join(imgDir, "%s%i.bmp"%(imgBase, ii)) for ii in range(nImg-7,nImg)]
+    flatImg = createFlat(flatImgList)
     frameStartNum = 1
     frameEndNum = None
     # detectedFiberList = batchProcess(imgDir, flatImg, frameStartNum, frameEndNum, imgBase)
-    detectedFiberList = batchMultiprocess(imgDir)
+    detectedFiberList = batchMultiprocess(imgDir, flatImg)
     # remove those not detected in more than 1 frame
     # detectedFiberList = [detectedFiber for detectedFiber in detectedFiberList.detectedFibers if len(detectedFiber.imageFrames)>1]
     print("Done, found ", len(detectedFiberList.detectedFibers), "fibers")
 
     # save detections to picked file
     pickleFile = os.path.join(imgDir, "pickledDetections.pkl")
+    centroidFile = pickleFile = os.path.join(imgDir, "pickledCentroids.pkl")
     detectedFiberList.pickle(pickleFile)
+    detectedFiberList.pickleCentroids(centroidFile)
 
 
     # import pdb; pdb.set_trace(

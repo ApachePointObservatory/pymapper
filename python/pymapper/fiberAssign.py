@@ -1,4 +1,11 @@
 """Routines for identifying, assigning fibers. Determining which (if any are missing)
+
+
+todo:
+in recursive fitter, identify when solution is not changing and exit
+what to do with multiple matches?
+discover and reject when too bright?rawImage-8787-57476-shortexp bad, _slow_dark ok
+
 """
 from __future__ import division, absolute_import
 
@@ -10,7 +17,7 @@ import numpy
 from scipy.optimize import fmin
 
 import matplotlib
-matplotlib.use("Agg")
+# matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from sdss.utilities.yanny import yanny
@@ -183,6 +190,7 @@ class SlitheadSolver(object):
         # self.plotTrace(measuredTrace)
         # optimalTrace = self.getOptimalTrace()
         # self.plotTrace(optimalTrace)
+        print("missing fiber numbers: ", self.missingFiberNumbers)
 
     def getNormalizedMeasuredTrace(self):
         # construct from the detectedFiberList
@@ -293,6 +301,8 @@ class PlPlugMap(object):
 class FocalSurfaceSolver(object):
     def __init__(self, detectedFiberList, plPlugMapFile):
         self.detectedFiberList = detectedFiberList
+        if not os.path.exists(plPlugMapFile):
+            raise RuntimeError("coudl not locate plPlugMapFile: %s"%plPlugMapFile)
         self.plPlugMap = PlPlugMap(plPlugMapFile)
         #self.nHistBins = 100 # number of bins for histogram
         #self.focalRadHist, self.binEdges = numpy.histogram(self.plPlugMap.radPos, bins=self.nHistBins)
@@ -304,7 +314,7 @@ class FocalSurfaceSolver(object):
         self.matchMeasToPlPlugMap(self.measXPos, self.measYPos) # sets attriubte plPlugMapInds
         throughputList = self.getThroughputList()
         self.plPlugMap.enterMappedData(self.measPosInds, throughputList, self.plPlugMapInds)
-        self.plPlugMap.writeMe("/Users/csayres/Desktop/", 55555)
+        self.plPlugMap.writeMe(os.path.split(plPlugMapFile)[0], 55555)
         self.plPlugMap.plotMissing()
 
     def getThroughputList(self):
@@ -427,7 +437,9 @@ class FocalSurfaceSolver(object):
         recursively!!!, this routine tweaks trans, rot, and scale each time
         """
         if currentCall == maxCalls:
-            raise RuntimeError("Max recursion reached!!!!")
+            # raise RuntimeError("Max recursion reached!!!!")
+            print("max recurion reached")
+        #     return
         # brute force, compare distance to
         # all other points, could
         # do some nearest neighbor search
@@ -451,7 +463,7 @@ class FocalSurfaceSolver(object):
 
         # did we get the expected amount of matches?
         print("got ", len(plPlugMapInds), "matches", len(multiMatchInds), "multimatches")
-        if len(plPlugMapInds) == len(xArray):
+        if len(plPlugMapInds) == len(xArray) or currentCall == maxCalls:
             # every match found, we're done!
             self.plPlugMapInds = plPlugMapInds
             self.measPosInds = measPosInds
@@ -478,6 +490,7 @@ class FocalSurfaceSolver(object):
         newPositions = fitTransRotScale.model.apply(xyArray, doInverse=True)
         xArray = newPositions[:,0]
         yArray = newPositions[:,1]
+        self.plot(xArray, yArray)
         self.matchMeasToPlPlugMap(xArray, yArray, currentCall=currentCall+1, previousSolution=transRotScaleSolution)
 
 
@@ -495,7 +508,7 @@ def frameNumFromName(imgName, imgBase="img", imgExt="bmp"):
 
 if __name__ == "__main__":
     import pickle
-    imgDir = "/Users/csayres/Desktop/mapperPyguide/run6noFlat"
+    imgDir = "/Volumes/Boof/scan/57476/rawImage-8787-57476-shortexp_slow_dark"# "/Users/csayres/Desktop/mapperPyguide/run6noFlat"
 
     pkl_file = open(os.path.join(imgDir, "pickledDetections.pkl"), "rb")
 
@@ -526,7 +539,7 @@ if __name__ == "__main__":
     #     plt.plot(range(lastFrameNum-firstFrameNum+1), fiber, 'k')
     # plt.show()
 
-    SlitheadSolver(detectedFiberList)
+    # SlitheadSolver(detectedFiberList)
     fss = FocalSurfaceSolver(detectedFiberList, os.path.join(imgDir, "plPlugMapP-8787.par"))
     # maxDetect, imgFrames = extractMax(detectedFiberList)
     # plt.hist(numpy.diff(imgFrames), bins=200)
