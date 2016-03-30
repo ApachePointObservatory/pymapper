@@ -7,6 +7,7 @@ import collections
 from operator import attrgetter
 import time
 import pickle
+from multiprocessing import Pool
 
 import numpy
 import scipy.ndimage
@@ -20,6 +21,22 @@ import PyGuide
 
 THRESH = 50
 MINCOUNTS = 50
+
+CCDInfo = PyGuide.CCDInfo(bias=50, readNoise=10, ccdGain=1)
+def processImage(imageFile):
+    """! Process a single image
+
+    @param[in] imageFile. String
+
+    """
+    # print("processing img: ", os.path.split(imageFile)[-1])
+    imgData = scipy.ndimage.imread(imageFile)
+    pyGuideCentroids = PyGuide.findStars(imgData, None, None, CCDInfo)[0]
+    brightestCentroid = None
+    if pyGuideCentroids:
+        if pyGuideCentroids[0].counts > 300:
+            brightestCentroid = pyGuideCentroids[0]
+    return (imageFile, brightestCentroid)
 
 def applyThreshold(array2d, thresh):
     # which pixels are greater than sigmaDetect sigma from the mean
@@ -86,8 +103,8 @@ class DetectedFiber(object):
         # if center moves by more than 0.25 pixels
         # doesn't belong
         dist = numpy.linalg.norm(numpy.subtract(pyGuideCentroid.xyCtr, self.xyCtr))
-        if dist < 3:
-            print("belongs to", dist, self.imageFrames)
+        # if dist < 3:
+        #     print("belongs to", dist, self.imageFrames)
         return dist < 3
         # print("dist!", dist, self.imageFrames)
         # return dist<(self.rad/2.)
@@ -139,6 +156,60 @@ class DetectedFiberList(object):
     #                 break
     #     return previousFibers
 
+    def sortDetections(self):
+        """Reorganize detection list into groups
+        of detections (1 group per fiber)
+        """
+        for imageFile, brightestCentroid in self.brightestCentroidList:
+            isNewDetection = None
+            # print("max, mean value: ", numpy.max(imgData), numpy.mean(imgData))
+            # toss all finds with counts below the threshold:
+            # pyGuideCentroids = [pyGuideFind for pyGuideFind in pyGuideCentroids if pyGuideFind.counts > MINCOUNTS]
+            # determine if any of these detections were present in the previous frame,
+            # only look to the previous image (fibers may only be detected in contiguous images)
+            # so don't look further back than one image.
+            # if so, apply them to the correct (previous) detection
+            # if they were not previously detected, create a new detection
+            # print("found ", len(pyGuideCentroids), "fibers ")
+            # prevDetections = self.lastFrameDetectionsf
+            # for ind, pyGuideFind in enumerate(pyGuideCentroids):
+                # print("found", pyGuideFind.xyCtr, pyGuideFind.counts, pyGuideFind.rad)
+                # is this a new dectection or was it found already in the previous image?
+            crashMe = False
+            if brightestCentroid is not None:
+                isNewDetection = True
+                # search through every previous detection
+                for prevDetection in self.detectedFibers:
+                    if prevDetection.belongs2me(brightestCentroid):
+                        if isNewDetection == False:
+                            crashMe = True
+                            print("bad bad, crash me!")
+                        # print("previous detection!!!", brightestCentroid.xyCtr)
+                        isNewDetection = False
+                        # print("previous detection", os.path.split(imageFile)[-1], prevDetection.imageFrames)
+                        prevDetection.add2me(brightestCentroid, imageFile)
+                        # break # assign to the first that works???
+                    # was this is a new detection?
+                if isNewDetection:
+                    # print('new detection:', os.path.split(imageFile)[-1], brightestCentroid.counts, brightestCentroid.xyCtr)
+                    self.detectedFibers.append(DetectedFiber(brightestCentroid, imageFile))
+
+            # self.prevFrames.append(imageFile)
+            color = "r" if isNewDetection else "b"
+            fig = plt.figure(figsize=(10,10));plt.imshow(scipy.ndimage.imread(imageFile), vmin=0, vmax=10)#plt.show(block=False)
+            plt.scatter(0, 0, s=80, facecolors='none', edgecolors='b')
+            if brightestCentroid is not None:
+                x,y = brightestCentroid.xyCtr
+                plt.scatter(x, y, s=80, facecolors='none', edgecolors=color)
+            frameNumber = int(imageFile.split("img")[-1].split(".")[0])
+            zfilled = "%i"%frameNumber
+            zfilled = zfilled.zfill(5)
+            dd = os.path.split(imageFile)[0]
+            nfn = os.path.join(dd, "pyguide%s.png"%zfilled)
+            fig.savefig(nfn); plt.close(fig)    # close the figure
+            # if crashMe:
+            #     raise RuntimeError("Non-unique detection!!!!")
+
     def processImage(self, imageFile, frameNumber=None):
         """! Process a single image
 
@@ -155,54 +226,14 @@ class DetectedFiberList(object):
         if pyGuideCentroids:
             if pyGuideCentroids[0].counts > 300:
                 brightestCentroid = pyGuideCentroids[0]
+        self.brightestCentroidList.append((imageFile, brightestCentroid))
 
-        isNewDetection = None
-        # print("max, mean value: ", numpy.max(imgData), numpy.mean(imgData))
-        # toss all finds with counts below the threshold:
-        # pyGuideCentroids = [pyGuideFind for pyGuideFind in pyGuideCentroids if pyGuideFind.counts > MINCOUNTS]
-        # determine if any of these detections were present in the previous frame,
-        # only look to the previous image (fibers may only be detected in contiguous images)
-        # so don't look further back than one image.
-        # if so, apply them to the correct (previous) detection
-        # if they were not previously detected, create a new detection
-        # print("found ", len(pyGuideCentroids), "fibers ")
-        # prevDetections = self.lastFrameDetectionsf
-        # for ind, pyGuideFind in enumerate(pyGuideCentroids):
-            # print("found", pyGuideFind.xyCtr, pyGuideFind.counts, pyGuideFind.rad)
-            # is this a new dectection or was it found already in the previous image?
-        crashMe = False
-        if brightestCentroid is not None:
-            isNewDetection = True
-            # search through every previous detection
-            for prevDetection in self.detectedFibers:
-                if prevDetection.belongs2me(brightestCentroid):
-                    if isNewDetection == False:
-                        crashMe = True
-                        print("bad bad, crash me!")
-                    # print("previous detection!!!", brightestCentroid.xyCtr)
-                    isNewDetection = False
-                    print("previous detection", os.path.split(imageFile)[-1], prevDetection.imageFrames)
-                    prevDetection.add2me(brightestCentroid, imageFile)
-                    # break # assign to the first that works???
-                # was this is a new detection?
-            if isNewDetection:
-                print('new detection:', os.path.split(imageFile)[-1], brightestCentroid.counts, brightestCentroid.xyCtr)
-                self.detectedFibers.append(DetectedFiber(brightestCentroid, imageFile))
+    def multiprocessImage(self, imageFileList):
+        p = Pool(5)
+        self.brightestCentroidList = p.map(processImage, imageFileList)
 
-        # self.prevFrames.append(imageFile)
-        # color = "r" if isNewDetection else "b"
-        # fig = plt.figure(figsize=(10,10));plt.imshow(imgData, vmin=0, vmax=10)#plt.show(block=False)
-        # plt.scatter(0, 0, s=80, facecolors='none', edgecolors='b')
-        # if brightestCentroid is not None:
-        #     x,y = brightestCentroid.xyCtr
-        #     plt.scatter(x, y, s=80, facecolors='none', edgecolors=color)
-        # zfilled = "%i"%frameNumber
-        # zfilled = zfilled.zfill(5)
-        # dd = os.path.split(imageFile)[0]
-        # nfn = os.path.join(dd, "pyguide%s.png"%zfilled)
-        # fig.savefig(nfn); plt.close(fig)    # close the figure
-        # if crashMe:
-        #     raise RuntimeError("Non-unique detection!!!!")
+
+
 
 def batchProcess(imageFileDirectory, flatImg, frameStartNum, frameEndNum=None, imgBaseName="img", imgExtension="bmp"):
     """! Process all images in given directory
@@ -228,19 +259,45 @@ def batchProcess(imageFileDirectory, flatImg, frameStartNum, frameEndNum=None, i
             break
         frameNumber += 1
     print((frameNumber-frameStartNum)/(time.time()-tstart), "frames per second processed")
+    print("sorting detections")
+    detectedFiberList.sortDetections()
+    return detectedFiberList
+
+def batchMultiprocess(imageFileDirectory, imgBaseName="img", imgExtension="bmp"):
+    """! Process all images in given directory
+    """
+    detectedFiberList = DetectedFiberList(None)
+    imageFiles = glob.glob(os.path.join(imageFileDirectory, "*."+imgExtension))
+    nImageFiles = len(imageFiles)
+    imageFilesSorted = [os.path.join(imageFileDirectory, "%s%i.%s"%(imgBaseName, num, imgExtension)) for num in range(1,nImageFiles)]
+    # warning image files are not sorted as expected, even after explicitly sorting
+    # eg 999.jpg > 2000.jpg.  this is bad because image order matters very much
+    # furthermore rather than
+    # note image files are expected to be 1.jpg, 2.jpg, 3.jpg, ..., 354.jpg...
+    # while loop seems weird, but whatever
+    frameNumber = frameStartNum
+    tstart = time.time()
+    detectedFiberList.multiprocessImage(imageFilesSorted)
+    totaltime = time.time() - tstart
+    print("total time", totaltime)
+    print(nImageFiles/(totaltime), "frames per second processed")
+    print("sorting detections")
+    detectedFiberList.sortDetections()
     return detectedFiberList
 
 def convToFits(imageFileDirectory, flatImg, frameStartNum, frameEndNum=None, imgBaseName="img", imgExtension="bmp"):
     saveImage()
 
 if __name__ == "__main__":
-    imgDir = "/Users/csayres/Desktop/mapperPyguide/run6noFlat"
+    imgDir = "/home/lcomapper/scan/57476/rawImage-8787-57476-shortexp_slow_dark"
     imgBase = "img"
-    flatImgList = [os.path.join(imgDir, "%s%i.bmp"%(imgBase, ii)) for ii in range(1,7)]
-    flatImg = createFlat(flatImgList)
-    frameStartNum = 10
+    # flatImgList = [os.path.join(imgDir, "%s%i.bmp"%(imgBase, ii)) for ii in range(1,7)]
+    # flatImg = createFlat(flatImgList)
+    flatImg = None
+    frameStartNum = 1
     frameEndNum = None
-    detectedFiberList = batchProcess(imgDir, flatImg, frameStartNum, frameEndNum, imgBase)
+    # detectedFiberList = batchProcess(imgDir, flatImg, frameStartNum, frameEndNum, imgBase)
+    detectedFiberList = batchMultiprocess(imgDir)
     # remove those not detected in more than 1 frame
     # detectedFiberList = [detectedFiber for detectedFiber in detectedFiberList.detectedFibers if len(detectedFiber.imageFrames)>1]
     print("Done, found ", len(detectedFiberList.detectedFibers), "fibers")

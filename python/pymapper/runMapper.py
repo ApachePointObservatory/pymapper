@@ -13,9 +13,11 @@ from sdss.utilities.astrodatetime import datetime
 from pymapper.camera import Camera
 # from pymapper.imgProcess import DetectedFiberList
 from pymapper.motor import MotorController
+from pymapper.fiberAssign import FocalSurfaceSolver
 
 homedir = os.path.expanduser("~")
 scandir = os.path.join(homedir, "scan")
+platelistdir = os.environ["PLATELIST_DIR"]
 
 def determineScanNumber(plateID, mjddir):
     # replace plPlugMapP-XXX with plPlugMapM-XXX
@@ -26,6 +28,14 @@ def determineScanNumber(plateID, mjddir):
     nExisting = glob.glob(globStr)
     # number this scan accordingly
     return len(nExisting) + 1
+
+def pathPlugMapP(plateID):
+    plateZfill = ("%i"%plateID).zfill(6)
+    #replace 10s, 1s place with XX
+    plateSubDir = plateZfill[:-2] + "XX"
+    fileName = "plPlugMapP-%i.par"%plateID
+    return os.path.join(platelistdir, "plates", plateSubDir, plateZfill, fileName)
+
 
 if __name__ == "__main__":
 
@@ -72,6 +82,15 @@ if __name__ == "__main__":
         print("startCamera")
         camera.beginAcquisition(callFunc=moveMotor)
 
+    def solvePlate(detectedFiberList):
+        detectedFiberList.sortDetections()
+        plugMapPath = pathPlugMapP(plateID)
+        print("plugmap path", plugMapPath)
+        assert os.path.exists(plugMapPath)
+        fss = FocalSurfaceSolver(detectedFiberList, plugMapPath)
+
+    camera.doneProcessingCallback(solvePlate)
+
     motorController.addReadyCallback(startCamera)
     # hand fiber detection routine to the camera, so it is called
     # when any new frame is available
@@ -79,6 +98,13 @@ if __name__ == "__main__":
     # connecting to the motor starts it all off
     motorController.connect()
     reactor.run()
+
+ #   import pickle
+ #   pkl = open(os.path.join(imageDir, "detectionList.pkl"), "rb")
+ #   detectedFiberList = pickle.load(pkl)
+ #   pkl.close()
+ #   solvePlate(detectedFiberList)
+
 
 
 

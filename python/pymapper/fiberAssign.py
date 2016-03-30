@@ -9,8 +9,8 @@ import glob
 import numpy
 from scipy.optimize import fmin
 
-# import matplotlib
-# matplotlib.use("Agg")
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from sdss.utilities.yanny import yanny

@@ -15,7 +15,7 @@ PORT = 15000
 STARTPOS = 27 #mm
 #ENDPOS = 100 #mm
 ENDPOS = 137 #mm
-SCANSPEED = 1 ## mm/sec
+SCANSPEED = 0.5 ## mm/sec
 QUICKSPEED = 1.2 ## mm/sec
 
 class Command(object):
@@ -130,11 +130,7 @@ class MotorController(object):
         print("preparing for scan")
         # foo is ignored arg passed via callback framework
         # could send a stop first...
-        self.getStatus(callFunc=self.assertHomed)
-        self.setSpeed(QUICKSPEED)
-        self.move(STARTPOS)
-        self.setSpeed(SCANSPEED)
-        self.laserOn(callFunc=self.readyCallback)
+        self.getStatus(callFunc=self.checkHomeThenMove)
 
     def scan(self, callFunc=None):
         self.move(ENDPOS)
@@ -146,16 +142,22 @@ class MotorController(object):
         print("resetAfterScan")
         # foo is ignored arg passed via callback framework
         # could send a stop first...
-        # self.getStatus(callFunc=self.assertHomed)
+        # self.getStatus(callFunc=self.checkHomeThenMove)
         self.setSpeed(QUICKSPEED)
         self.move(STARTPOS, callFunc=self.disconnect)
 
-    def assertHomed(self):
+    def checkHomeThenMove(self):
         if not self.isHomed:
             print("Slit Head Axis is not homed.  Home it before proceeding!")
             reactor.stop()
             # raise RuntimeError("Slit Head Axis is not homed.  Home it before proceeding!")
-        print("Axis is Homed!!")
+        else:
+            print("Axis is Homed!!")
+            # move motor in position for scan.
+            self.setSpeed(QUICKSPEED)
+            self.move(STARTPOS)
+            self.setSpeed(SCANSPEED)
+            self.laserOn(callFunc=self.readyCallback)
 
     def getStatus(self, callFunc=None):
         print("getStatus")

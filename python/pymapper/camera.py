@@ -130,6 +130,8 @@ class Camera(object):
                 # not acquiring
                 print("camera done! and all frames processed!")
                 print("found %i fibers"%len(self.detectedFiberList.detectedFibers))
+                print("pickling detection list")
+                self.detectedFiberList.pickle(os.path.join(self.imageDir, "detectionList.pkl"))
                 print("calling matching routines")
                 self.procImgCall(self.detectedFiberList.export())
                 # import pdb; pdb.set_trace()
