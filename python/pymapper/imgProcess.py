@@ -20,7 +20,8 @@ from astropy.io import fits
 import PyGuide
 
 THRESH = 50
-MINCOUNTS = 50
+MINCOUNTS = 150
+MINSEP = 4 # min between fibers separation in pixels
 
 CCDInfo = PyGuide.CCDInfo(bias=50, readNoise=10, ccdGain=1)
 def processImage(imageFile):
@@ -31,19 +32,22 @@ def processImage(imageFile):
     """
     # print("processing img: ", os.path.split(imageFile)[-1])
     imgData = scipy.ndimage.imread(imageFile)
-    brightestCentroid = None
+    counts = None
+    xyCtr = None
+    rad = None
     try:
         pyGuideCentroids = PyGuide.findStars(imgData, None, None, CCDInfo)[0]
+        counts = pyGuideCentroids[0].counts
+        xyCtr = pyGuideCentroids[0].xyCtr
+        rad = pyGuideCentroids[0].rad
     except ValueError:
+        # if py guide fails
         pass
-    if pyGuideCentroids:
-        if pyGuideCentroids[0].counts > 300:
-            brightestCentroid = pyGuideCentroids[0]
     return dict((
                     ("imageFile", imageFile),
-                    ("counts", brightestCentroid.counts if brightestCentroid is not None else None),
-                    ("xyCtr", brightestCentroid.xyCtr if brightestCentroid is not None else None),
-                    ("rad", brightestCentroid.rad if brightestCentroid is not None else None)
+                    ("counts", counts),
+                    ("xyCtr", xyCtr),
+                    ("rad", rad)
                 ))
 
 def applyThreshold(array2d, thresh):
@@ -110,7 +114,8 @@ class DetectedFiber(object):
 
     @property
     def xyCtr(self):
-        return self.centroidList[-1]["xyCtr"]
+        # return center based on weighted counts
+        return numpy.average([cent["xyCtr"] for cent in self.centroidList], axis=0, weights=self.counts)
 
     @property
     def xyCtrs(self):
@@ -118,7 +123,7 @@ class DetectedFiber(object):
 
     @property
     def rad(self):
-        return self.centroidList[-1]["rad"]
+        return numpy.average([cent["rad"] for cent in self.centroidList], axis=0, weights=self.counts)
 
     def belongs2me(self, centroidDict):
         # if center moves by more than 0.25 pixels
@@ -126,7 +131,7 @@ class DetectedFiber(object):
         dist = numpy.linalg.norm(numpy.subtract(centroidDict["xyCtr"], self.xyCtr))
         # if dist < 3:
         #     print("belongs to", dist, self.imageFiles)
-        return dist < 4
+        return dist < MINSEP
         # print("dist!", dist, self.imageFiles)
         # return dist<(self.rad/2.)
 
@@ -244,7 +249,7 @@ def sortDetections(brightestCentroidList):
             # print("found", pyGuideFind.xyCtr, pyGuideFind.counts, pyGuideFind.rad)
             # is this a new dectection or was it found already in the previous image?
         crashMe = False
-        if brightestCentroid["xyCtr"] is not None:
+        if brightestCentroid["counts"] is not None and brightestCentroid["counts"] > MINCOUNTS:
             isNewDetection = True
             # search through every previous detection
             for prevDetection in detectedFibers:
@@ -261,7 +266,7 @@ def sortDetections(brightestCentroidList):
             if isNewDetection:
                 # print('new detection:', os.path.split(imageFile)[-1], brightestCentroid.counts, brightestCentroid.xyCtr)
                 detectedFibers.append(DetectedFiber(brightestCentroid))
-        
+
         # self.prevFrames.append(imageFile)
         #imageFile = brightestCentroid["imageFile"]
         #color = "r" if isNewDetection else "b"
