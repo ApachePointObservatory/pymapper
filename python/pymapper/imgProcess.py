@@ -21,6 +21,8 @@ MINCOUNTS = 0
 MINSEP = 3.5 # min between fibers separation in pixels
 
 CCDInfo = PyGuide.CCDInfo(bias=50, readNoise=10, ccdGain=1)
+p = Pool(5)
+
 def processImage(imageFile):
     """! Process a single image
 
@@ -124,10 +126,14 @@ class DetectedFiber(object):
         return imageFileName in self.imageFiles
 
 
-def multiprocessImage(imageFileList, callFunc):
-    p = Pool(5)
+def multiprocessImage(imageFileList, callFunc, block=False):
     # may want to try map_async
-    return p.map_async(processImage, imageFileList, callback=callFunc)
+    if block:
+        output = p.map(processImage, imageFileList)
+        callFunc(output)
+        return None
+    else:
+        return p.map_async(processImage, imageFileList, callback=callFunc)
 
 def sortDetections(brightestCentroidList):
     """Reorganize detection list into groups

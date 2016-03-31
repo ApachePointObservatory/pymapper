@@ -160,23 +160,23 @@ class MotorController(object):
             self.laserOn(callFunc=self.readyCallback)
 
     def getStatus(self, callFunc=None):
-        print("getStatus")
+        # print("getStatus")
         return self.queueCommand("status", callFunc=callFunc)
 
     def setSpeed(self, value, callFunc=None):
-        print("set speed to %.2f"%float(value))
+        # print("set speed to %.2f"%float(value))
         return self.queueCommand("speed %.2f"%float(value), callFunc=callFunc)
 
     def move(self, value, callFunc=None):
-        print("move to %.2f"%float(value))
+        # print("move to %.2f"%float(value))
         return self.queueCommand("move %.2f"%float(value), callFunc=callFunc)
 
     def laserOn(self, callFunc=None):
-        print("laser on")
+        # print("laser on")
         return self.queueCommand("lonn", callFunc=callFunc)
 
     def laserOff(self, callFunc=None):
-        print("laser off")
+        # print("laser off")
         return self.queueCommand("loff", callFunc=callFunc)
 
     def dataReceived(self, data):
