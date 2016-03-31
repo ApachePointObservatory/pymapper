@@ -38,7 +38,7 @@ def processImage(imageFile):
         counts = pyGuideCentroids[0].counts
         xyCtr = pyGuideCentroids[0].xyCtr
         rad = pyGuideCentroids[0].rad
-    except Exception, as e:
+    except Exception as e:
         print("Exception in pyGuide", e)
     return dict((
                     ("imageFile", imageFile),
