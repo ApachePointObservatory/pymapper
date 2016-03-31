@@ -3,10 +3,7 @@
 from __future__ import division, absolute_import
 import glob
 import os
-import collections
-from operator import attrgetter
 import time
-import pickle
 from multiprocessing import Pool
 
 import numpy
@@ -20,7 +17,8 @@ from astropy.io import fits
 import PyGuide
 
 THRESH = 50
-MINCOUNTS = 50
+MINCOUNTS = 0
+MINSEP = 3.5 # min between fibers separation in pixels
 
 CCDInfo = PyGuide.CCDInfo(bias=50, readNoise=10, ccdGain=1)
 def processImage(imageFile):
@@ -31,19 +29,22 @@ def processImage(imageFile):
     """
     # print("processing img: ", os.path.split(imageFile)[-1])
     imgData = scipy.ndimage.imread(imageFile)
-    brightestCentroid = None
+    counts = None
+    xyCtr = None
+    rad = None
     try:
         pyGuideCentroids = PyGuide.findStars(imgData, None, None, CCDInfo)[0]
+        counts = pyGuideCentroids[0].counts
+        xyCtr = pyGuideCentroids[0].xyCtr
+        rad = pyGuideCentroids[0].rad
     except ValueError:
+        # if py guide fails
         pass
-    if pyGuideCentroids:
-        if pyGuideCentroids[0].counts > 0:
-            brightestCentroid = pyGuideCentroids[0]
     return dict((
                     ("imageFile", imageFile),
-                    ("counts", brightestCentroid.counts if brightestCentroid is not None else None),
-                    ("xyCtr", brightestCentroid.xyCtr if brightestCentroid is not None else None),
-                    ("rad", brightestCentroid.rad if brightestCentroid is not None else None)
+                    ("counts", counts),
+                    ("xyCtr", xyCtr),
+                    ("rad", rad)
                 ))
 
 def applyThreshold(array2d, thresh):
@@ -51,21 +52,6 @@ def applyThreshold(array2d, thresh):
     pixInd = numpy.argwhere(array2d < thresh)
     array2d[pixInd] = 0
     return array2d
-
-def pyGuideFind(array2d, medianFilter=False):
-    if medianFilter:
-        array2d = scipy.ndimage.median_filter(array2d, size=2)
-    ccdInfo = PyGuide.CCDInfo(bias=50, readNoise=10, ccdGain=1)
-    findStars = PyGuide.findStars(array2d, None, None, ccdInfo)
-    print("found ", len(findStars[0]), "fibers")
-    plt.figure(figsize=(13,13))
-    plt.imshow(array2d)
-    for centroid in findStars[0]:
-        print("centroid counts:", centroid.counts)
-        x,y = centroid.xyCtr
-        plt.scatter(x, y, s=80, facecolors='none', edgecolors='r')
-    plt.show()
-    return findStars
 
 def to2d(array1d, imshape):
     return numpy.reshape(array1d, imshape)
@@ -110,7 +96,8 @@ class DetectedFiber(object):
 
     @property
     def xyCtr(self):
-        return self.centroidList[-1]["xyCtr"]
+        # return center based on weighted counts
+        return numpy.average([cent["xyCtr"] for cent in self.centroidList], axis=0, weights=self.counts)
 
     @property
     def xyCtrs(self):
@@ -118,7 +105,7 @@ class DetectedFiber(object):
 
     @property
     def rad(self):
-        return self.centroidList[-1]["rad"]
+        return numpy.average([cent["rad"] for cent in self.centroidList], axis=0, weights=self.counts)
 
     def belongs2me(self, centroidDict):
         # if center moves by more than 0.25 pixels
@@ -126,7 +113,7 @@ class DetectedFiber(object):
         dist = numpy.linalg.norm(numpy.subtract(centroidDict["xyCtr"], self.xyCtr))
         # if dist < 3:
         #     print("belongs to", dist, self.imageFiles)
-        return dist < 3.5
+        return dist < MINSEP
         # print("dist!", dist, self.imageFiles)
         # return dist<(self.rad/2.)
 
@@ -136,87 +123,6 @@ class DetectedFiber(object):
     def detectedIn(self, imageFileName):
         return imageFileName in self.imageFiles
 
-# class DetectedFiberList(object):
-#     def __init__(self, flatImg=None):
-#         self.ccdInfo = PyGuide.CCDInfo(bias=50, readNoise=10, ccdGain=1)
-#         # detected fibers is keyed by imageName
-#         self.detectedFibers = []
-#         self.brightestCentroidList = []
-#         self.flatImg = flatImg
-#         # self.prevFrames = collections.deque([], maxlen=4)
-
-#     def pickle(self, fileName):
-#         # save detections to picked file
-#         output = open(fileName, "wb")
-#         pickle.dump(self.export(), output)
-#         output.close()
-
-#     def export(self):
-#         # create a list of dics for picle-ability
-#         detectedFibers = []
-#         for detectedFiber in self.detectedFibers:
-#             detectedFibers.append(
-#                 dict((
-#                     ("imageFiles", detectedFiber.imageFiles),
-#                     ("counts", [centroid.counts for centroid in detectedFiber.centroids]),
-#                     ("xyCtrs", [centroid.xyCtr for centroid in detectedFiber.centroids]),
-#                 ))
-#             )
-#         return detectedFibers
-
-#     def pickleCentroids(self, fileName):
-#         # save detections to picked file
-#         output = open(fileName, "wb")
-#         pickle.dump(self.exportCentroids(), output)
-#         output.close()
-
-#     def exportCentroids(self):
-#         # create a list of dics for picle-ability
-#         detectedCentroids = []
-#         for imgFrame, detectedCentroid in self.detectedCentroids:
-#             detectedCentroids.append(
-#                 dict((
-#                     ("imageFile", imgFrame),
-#                     ("counts", detectedCentroid.counts),
-#                     ("xyCtr", detectedCentroid.xyCtr),
-#                 ))
-#             )
-#         return detectedCentroids
-
-    # @property
-    # def lastFrameDetections(self):
-    #     """Return all detected fibers found in the previous image frame
-    #     """
-    #     previousFibers = []
-    #     for prevImg in self.prevFrames:
-    #         for fiber in self.detectedFibers[::-1]:
-    #             if fiber.detectedIn(prevImg):
-    #                 previousFibers.append(fiber)
-    #             else:
-    #                 break
-    #     return previousFibers
-
-
-
-    # def processImage(self, imageFile, frameNumber=None):
-    #     """! Process a single image
-
-    #     @param[in] imageFile. String
-
-    #     """
-    #     # read in the image data and apply the flat
-    #     print("processing frame", os.path.split(imageFile)[-1])
-    #     imgData = scipy.ndimage.imread(imageFile) #/ self.flatImg
-    #     if self.flatImg is not None:
-    #         imgData = imgData / self.flatImg
-    #     # imgData = scipy.ndimage.gaussian_filter(imgData, 1, mode="nearest")
-    #     #plt.figure();plt.imshow(imgData);plt.show()
-    #     pyGuideCentroids = PyGuide.findStars(imgData, None, None, self.ccdInfo)[0]
-    #     brightestCentroid = None
-    #     if pyGuideCentroids:
-    #         if pyGuideCentroids[0].counts > 300:
-    #             brightestCentroid = pyGuideCentroids[0]
-    #     self.brightestCentroidList.append((imageFile, brightestCentroid))
 
 def multiprocessImage(imageFileList, callFunc):
     p = Pool(5)
@@ -230,21 +136,8 @@ def sortDetections(brightestCentroidList):
     detectedFibers = []
     for brightestCentroid in brightestCentroidList:
         isNewDetection = None
-        # print("max, mean value: ", numpy.max(imgData), numpy.mean(imgData))
-        # toss all finds with counts below the threshold:
-        # pyGuideCentroids = [pyGuideFind for pyGuideFind in pyGuideCentroids if pyGuideFind.counts > MINCOUNTS]
-        # determine if any of these detections were present in the previous frame,
-        # only look to the previous image (fibers may only be detected in contiguous images)
-        # so don't look further back than one image.
-        # if so, apply them to the correct (previous) detection
-        # if they were not previously detected, create a new detection
-        # print("found ", len(pyGuideCentroids), "fibers ")
-        # prevDetections = self.lastFrameDetectionsf
-        # for ind, pyGuideFind in enumerate(pyGuideCentroids):
-            # print("found", pyGuideFind.xyCtr, pyGuideFind.counts, pyGuideFind.rad)
-            # is this a new dectection or was it found already in the previous image?
         crashMe = False
-        if brightestCentroid["xyCtr"] is not None:
+        if brightestCentroid["counts"] is not None and brightestCentroid["counts"] > MINCOUNTS:
             isNewDetection = True
             # search through every previous detection
             for prevDetection in detectedFibers:
@@ -261,7 +154,7 @@ def sortDetections(brightestCentroidList):
             if isNewDetection:
                 # print('new detection:', os.path.split(imageFile)[-1], brightestCentroid.counts, brightestCentroid.xyCtr)
                 detectedFibers.append(DetectedFiber(brightestCentroid))
-        
+
         # self.prevFrames.append(imageFile)
         #imageFile = brightestCentroid["imageFile"]
         #color = "r" if isNewDetection else "b"
@@ -279,35 +172,6 @@ def sortDetections(brightestCentroidList):
         # if crashMe:
         #     raise RuntimeError("Non-unique detection!!!!")
     return detectedFibers
-
-
-# def batchProcess(imageFileDirectory, flatImg, frameStartNum, frameEndNum=None, imgBaseName="img", imgExtension="bmp"):
-#     """! Process all images in given directory
-#     """
-#     detectedFiberList = DetectedFiberList(flatImg)
-#     imageFiles = glob.glob(os.path.join(imageFileDirectory, "*."+imgExtension))
-#     # warning image files are not sorted as expected, even after explicitly sorting
-#     # eg 999.jpg > 2000.jpg.  this is bad because image order matters very much
-#     # furthermore rather than
-#     # note image files are expected to be 1.jpg, 2.jpg, 3.jpg, ..., 354.jpg...
-#     # while loop seems weird, but whatever
-#     frameNumber = frameStartNum
-#     tstart = time.time()
-#     while True:
-#         nextImageFile = "%s%i.%s"%(imgBaseName, frameNumber, imgExtension)
-#         imageFilePath = os.path.join(imageFileDirectory, nextImageFile)
-#         if imageFilePath not in imageFiles:
-#             print(imageFilePath, "not in imageFiles", len(imageFiles))
-#             break
-#         # print("processing: ", imageFilePath)
-#         detectedFiberList.processImage(imageFilePath, frameNumber)
-#         if frameEndNum is not None and frameEndNum == frameNumber:
-#             break
-#         frameNumber += 1
-#     print((frameNumber-frameStartNum)/(time.time()-tstart), "frames per second processed")
-#     print("sorting detections")
-#     detectedFiberList.sortDetections()
-#     return detectedFiberList
 
 def batchMultiprocess(imageFileDirectory, flatImg, imgBaseName="img", imgExtension="bmp"):
     """! Process all images in given directory
@@ -349,25 +213,4 @@ if __name__ == "__main__":
     # detectedFiberList = [detectedFiber for detectedFiber in detectedFiberList.detectedFibers if len(detectedFiber.imageFiles)>1]
     print("Done, found ", len(detectedFiberList.detectedFibers), "fibers")
 
-    # save detections to picked file
-    # pickleFile = os.path.join(imgDir, "pickledDetections.pkl")
-    # centroidFile = pickleFile = os.path.join(imgDir, "pickledCentroids.pkl")
-    # detectedFiberList.pickle(pickleFile)
-    # detectedFiberList.pickleCentroids(centroidFile)
-
-
-    # import pdb; pdb.set_trace(
-    # for fiber in detectedFiberList.detectedFibers: #sorted(detectedFiberList.detectedFibers, key=attrgetter("xyCtr")):
-    #     print (fiber.xyCtr, [os.path.split(x)[-1] for x in fiber.imageFiles])
-
-
-    # imgNumber = 83
-    # imgData = scipy.ndimage.imread(os.path.join(imgDir, "%s%i.bmp"%(imgBase, imgNumber)))
-    # # pyGuideFind(imgData)
-    # saveImage(os.path.join(imgDir, "%s%i.fits"%(imgBase, imgNumber)), imgData)
-    # # now check the flat
-    # flatImg = imgData/flatImg
-    # print("flat applied!")
-    # pyGuideFind(flatImg)
-    # saveImage(os.path.join(imgDir, "%s%i_proc.fits"%(imgBase, imgNumber)), flatImg)
 
