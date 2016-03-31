@@ -128,6 +128,7 @@ class DetectedFiber(object):
 def multiprocessImage(imageFileList, callFunc, block=False):
     # may want to try map_async
     p = Pool(5)
+    print("imageFileList, multiprocess", imageFileList)
     if block:
         output = p.map(processImage, imageFileList)
         callFunc(output)
