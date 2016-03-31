@@ -53,21 +53,6 @@ def applyThreshold(array2d, thresh):
     array2d[pixInd] = 0
     return array2d
 
-def pyGuideFind(array2d, medianFilter=False):
-    if medianFilter:
-        array2d = scipy.ndimage.median_filter(array2d, size=2)
-    ccdInfo = PyGuide.CCDInfo(bias=50, readNoise=10, ccdGain=1)
-    findStars = PyGuide.findStars(array2d, None, None, ccdInfo)
-    print("found ", len(findStars[0]), "fibers")
-    plt.figure(figsize=(13,13))
-    plt.imshow(array2d)
-    for centroid in findStars[0]:
-        print("centroid counts:", centroid.counts)
-        x,y = centroid.xyCtr
-        plt.scatter(x, y, s=80, facecolors='none', edgecolors='r')
-    plt.show()
-    return findStars
-
 def to2d(array1d, imshape):
     return numpy.reshape(array1d, imshape)
 
@@ -151,19 +136,6 @@ def sortDetections(brightestCentroidList):
     detectedFibers = []
     for brightestCentroid in brightestCentroidList:
         isNewDetection = None
-        # print("max, mean value: ", numpy.max(imgData), numpy.mean(imgData))
-        # toss all finds with counts below the threshold:
-        # pyGuideCentroids = [pyGuideFind for pyGuideFind in pyGuideCentroids if pyGuideFind.counts > MINCOUNTS]
-        # determine if any of these detections were present in the previous frame,
-        # only look to the previous image (fibers may only be detected in contiguous images)
-        # so don't look further back than one image.
-        # if so, apply them to the correct (previous) detection
-        # if they were not previously detected, create a new detection
-        # print("found ", len(pyGuideCentroids), "fibers ")
-        # prevDetections = self.lastFrameDetectionsf
-        # for ind, pyGuideFind in enumerate(pyGuideCentroids):
-            # print("found", pyGuideFind.xyCtr, pyGuideFind.counts, pyGuideFind.rad)
-            # is this a new dectection or was it found already in the previous image?
         crashMe = False
         if brightestCentroid["counts"] is not None and brightestCentroid["counts"] > MINCOUNTS:
             isNewDetection = True
@@ -241,25 +213,4 @@ if __name__ == "__main__":
     # detectedFiberList = [detectedFiber for detectedFiber in detectedFiberList.detectedFibers if len(detectedFiber.imageFiles)>1]
     print("Done, found ", len(detectedFiberList.detectedFibers), "fibers")
 
-    # save detections to picked file
-    # pickleFile = os.path.join(imgDir, "pickledDetections.pkl")
-    # centroidFile = pickleFile = os.path.join(imgDir, "pickledCentroids.pkl")
-    # detectedFiberList.pickle(pickleFile)
-    # detectedFiberList.pickleCentroids(centroidFile)
-
-
-    # import pdb; pdb.set_trace(
-    # for fiber in detectedFiberList.detectedFibers: #sorted(detectedFiberList.detectedFibers, key=attrgetter("xyCtr")):
-    #     print (fiber.xyCtr, [os.path.split(x)[-1] for x in fiber.imageFiles])
-
-
-    # imgNumber = 83
-    # imgData = scipy.ndimage.imread(os.path.join(imgDir, "%s%i.bmp"%(imgBase, imgNumber)))
-    # # pyGuideFind(imgData)
-    # saveImage(os.path.join(imgDir, "%s%i.fits"%(imgBase, imgNumber)), imgData)
-    # # now check the flat
-    # flatImg = imgData/flatImg
-    # print("flat applied!")
-    # pyGuideFind(flatImg)
-    # saveImage(os.path.join(imgDir, "%s%i_proc.fits"%(imgBase, imgNumber)), flatImg)
 
