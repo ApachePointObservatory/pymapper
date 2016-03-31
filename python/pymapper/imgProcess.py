@@ -37,7 +37,7 @@ def processImage(imageFile):
     except ValueError:
         pass
     if pyGuideCentroids:
-        if pyGuideCentroids[0].counts > 300:
+        if pyGuideCentroids[0].counts > 0:
             brightestCentroid = pyGuideCentroids[0]
     return dict((
                     ("imageFile", imageFile),
@@ -126,7 +126,7 @@ class DetectedFiber(object):
         dist = numpy.linalg.norm(numpy.subtract(centroidDict["xyCtr"], self.xyCtr))
         # if dist < 3:
         #     print("belongs to", dist, self.imageFiles)
-        return dist < 4
+        return dist < 3.5
         # print("dist!", dist, self.imageFiles)
         # return dist<(self.rad/2.)
 
