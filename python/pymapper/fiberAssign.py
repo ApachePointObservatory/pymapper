@@ -17,7 +17,7 @@ import numpy
 from scipy.optimize import fmin
 
 import matplotlib
-# matplotlib.use("Agg")
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from sdss.utilities.yanny import yanny
@@ -200,9 +200,9 @@ class SlitheadSolver(object):
         # this is for later searching
         measuredTrace = numpy.zeros(self.totalFrames)
         for detectedFiber in self.detectedFiberList:
-            maxCounts = numpy.max(detectedFiber["counts"])
+            maxCounts = numpy.max(detectedFiber.counts)
             foundMax = False
-            for imgFrame, counts in itertools.izip(detectedFiber["imageFrames"], detectedFiber["counts"]):
+            for imgFrame, counts in itertools.izip(detectedFiber.imageFiles, detectedFiber.counts):
                 frameNumber = frameNumFromName(imgFrame)
                 traceInd = frameNumber - self.firstFrameNum
                 normalizedCounts = counts / maxCounts
@@ -319,7 +319,7 @@ class FocalSurfaceSolver(object):
 
     def getThroughputList(self):
         # report max counts as throughput, what should the true definition be?
-        return [numpy.max(self.detectedFiberList[ind]["counts"]) for ind in self.measPosInds]
+        return [numpy.max(self.detectedFiberList[ind].counts) for ind in self.measPosInds]
 
     def initialMeasTransforms(self):
         # just put the measured data in the ballpark of the
@@ -422,8 +422,9 @@ class FocalSurfaceSolver(object):
         # "centroid" detection by weighted counts..
         detectionCenters = []
         for detectedFiber in self.detectedFiberList:
-            xyCenters = [numpy.asarray(xyCenter) for xyCenter in detectedFiber["xyCtrs"]]
-            counts = detectedFiber["counts"]
+            print(detectedFiber)
+            xyCenters = [numpy.asarray(xyCenter) for xyCenter in detectedFiber.xyCtrs]
+            counts = detectedFiber.counts
             detectionCenters.append(numpy.average(xyCenters, axis=0, weights=counts))
         detectionCenters = numpy.asarray(detectionCenters)
         xPos, yPos = detectionCenters[:,0], detectionCenters[:,1]

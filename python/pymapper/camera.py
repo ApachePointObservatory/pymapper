@@ -7,6 +7,7 @@ import time
 import glob
 import subprocess
 import collections
+import pickle
 
 # import numpy
 import scipy.ndimage
@@ -14,7 +15,7 @@ import scipy.ndimage
 from twisted.internet import reactor
 from twisted.internet.task import LoopingCall
 
-from pymapper.imgProcess import DetectedFiberList
+from pymapper.imgProcess import processImage, multiprocessImage #DetectedFiberList
 
 # how to ensure that the image program is killed?
 
@@ -27,6 +28,19 @@ BASENAME = "img"
 EXTENSION = "bmp"
 
 # self.imageDir = os.path.join(os.environ["PYMAPPER_DIR"], "tests")
+
+def pickleCentroids(centroidList, imageDir):
+    # save detections to picked file
+    fileName = os.path.join(imageDir, "centroidList.pkl")
+    output = open(fileName, "wb")
+    pickle.dump(centroidList, output)
+    output.close()
+
+def unpickleCentroids(imageDir):
+   pkl = open(os.path.join(imageDir, "centroidList.pkl"), "rb")
+   centroidList = pickle.load(pkl)
+   pkl.close()
+   return centroidList
 
 class Camera(object):
     def __init__(self, imageDir):
@@ -41,26 +55,30 @@ class Camera(object):
         self.imageDir = imageDir
         assert os.path.exists(imageDir), "%s doesn't exist, create it"%imageDir
         # clean up any existing files
-        for f in glob.glob(os.path.join(self.imageDir, "*.%s"%EXTENSION)):
-            os.remove(f)
-        # self.imageBuffer = []
+        assert len(self.getAllImgFiles())==0, "%s is not empty!"%imageDir
         self.acquisionCB = None
         self.procImgCall = None
-        self.detectedFiberList = DetectedFiberList()
-
+        self.centroidList = []
 
     def doneProcessingCallback(self, callFunc):
         # to be called when all image processing is done,
-        # receives exported detectdFiberList
+        # the centroids should have been saved as a picklefile
         self.procImgCall = callFunc
 
     @property
     def currFile(self):
         return self.getNthFile(self.fileNumProc)
 
+    def getAllImgFiles(self):
+        return glob.glob(os.path.join(self.imageDir, "*.%s"%EXTENSION))
+
     def getNthFile(self, fileNum):
         filename = "%s%i.%s"%(BASENAME, fileNum, EXTENSION)
         return os.path.join(self.imageDir, filename)
+
+    def getRemainingFileList(self):
+        nFiles = len(self.getAllImgFiles())
+        return [self.getNthFile(fileNum) for fileNum in range(self.fileNumProc, nFiles+1)]
 
     def beginAcquisition(self, callFunc=None):
         """call callFunc when acquision has started
@@ -77,6 +95,7 @@ class Camera(object):
 
 
     def stopAcquisition(self):
+        print("Stopping Camera Acquision")
         self.process.kill()
         # self.watchLoop.stop()
         self.acquiring = False
@@ -109,33 +128,44 @@ class Camera(object):
     #     if self.acquiring:
     #         reactor.callLater(0, self.watchDirectory)
 
+    def multiprocessDone(self, remainingCentroidList):
+        print("All frames processed!")
+        print("pickling centroid list")
+        self.centroidList.extend(remainingCentroidList)
+        pickleCentroids(self.centroidList, self.imageDir)
+        self.procImgCall()
+
     def processImageLoop(self):
         # called recursively until acquisition is done
-        # and all images processed
-        # if an unprocessed image is on the queue, process it
-        # print("unprocessed images", self.unprocessedImages)
+        # once acquisition is done switch to multiprocessing
+        # the remaining images!
+
         if os.path.exists(self.currFile):
             if self.fileNumProc == 1 and self.acquisitionCB is not None:
                 print("acquisition started")
                 reactor.callLater(0., self.acquisitionCB)
-            self.detectedFiberList.processImage(self.currFile)
-            self.fileNumProc += 1
-            reactor.callLater(0, self.processImageLoop)
+            if self.acquiring:
+                # continue processing one image at a time
+                # recursively here
+                self.centroidList.append(processImage(self.currFile))
+                self.fileNumProc += 1
+                reactor.callLater(0, self.processImageLoop)
+                return
+            else:
+                # done acquiring, move to multiprocessing!
+                # blocks?!
+                print("beginning multiprocessing")
+                self.multiProcessWait = multiprocessImage(self.getRemainingFileList(), self.multiprocessDone)
+                return
         else:
             # file wasn't found
             # are we still acquiring?
             if self.acquiring:
                 reactor.callLater(0, self.processImageLoop)
-            else:
-                # not acquiring
-                print("camera done! and all frames processed!")
-                print("found %i fibers"%len(self.detectedFiberList.detectedFibers))
-                print("pickling detection list")
-                self.detectedFiberList.pickle(os.path.join(self.imageDir, "detectionList.pkl"))
-                print("calling matching routines")
-                self.procImgCall(self.detectedFiberList.export())
-                # import pdb; pdb.set_trace()
                 return
+            else:
+                raise RuntimeError("processImageLoop in weird state")
+        # import pdb; pdb.set_trace()
 
         # try:
         #     fileName = self.getNthFile(self.fileNumProc)

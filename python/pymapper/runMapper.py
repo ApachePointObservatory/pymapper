@@ -10,7 +10,8 @@ from twisted.internet import reactor
 
 from sdss.utilities.astrodatetime import datetime
 
-from pymapper.camera import Camera
+from pymapper.imgProcess import sortDetections
+from pymapper.camera import Camera#, unpickleCentroids
 # from pymapper.imgProcess import DetectedFiberList
 from pymapper.motor import MotorController
 from pymapper.fiberAssign import FocalSurfaceSolver
@@ -18,6 +19,8 @@ from pymapper.fiberAssign import FocalSurfaceSolver
 homedir = os.path.expanduser("~")
 scandir = os.path.join(homedir, "scan")
 platelistdir = os.environ["PLATELIST_DIR"]
+
+
 
 def determineScanNumber(plateID, mjddir):
     # replace plPlugMapP-XXX with plPlugMapM-XXX
@@ -49,13 +52,19 @@ if __name__ == "__main__":
     mjddir = os.path.join(scandir, "%i"%MJD)
     if not os.path.exists(mjddir):
         os.makedirs(mjddir)
-    # determine which scan number (dont overwrite any existing)
-    scanNumber = determineScanNumber(plateID, mjddir)
-    print("scanNumber %i"%scanNumber)
+    plateDir = os.path.join(mjddir, "%i"%plateID)
+    if not os.path.exists(plateDir):
+        os.makedirs(plateDir)
+    # create a scan number dir
+    scanNum = 1
+    while True:
+        imageDir = os.path.join(plateDir, "rawImage-%i"%scanNum)
+        if not os.path.exists(imageDir):
+            os.makedirs(imageDir)
+            break
+        scanNum += 1
+    print("scanNumber %i"%scanNum)
     # create directory to hold camera images
-    imageDir = os.path.join(mjddir, "rawImage-%i-%i-%i"%(plateID, MJD, scanNumber))
-    if not os.path.exists(imageDir):
-        os.makedirs(imageDir)
     # note all previous images will be removed if image dir is not empty
     camera = Camera(imageDir)
 
@@ -82,8 +91,9 @@ if __name__ == "__main__":
         print("startCamera")
         camera.beginAcquisition(callFunc=moveMotor)
 
-    def solvePlate(detectedFiberList):
-        detectedFiberList.sortDetections()
+    def solvePlate():
+        # load the (previously pickled centroid list)
+        detectedFiberList = sortDetections(camera.centroidList)
         plugMapPath = pathPlugMapP(plateID)
         print("plugmap path", plugMapPath)
         assert os.path.exists(plugMapPath)
