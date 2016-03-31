@@ -5,7 +5,7 @@ todo:
 in recursive fitter, identify when solution is not changing and exit
 what to do with multiple matches?
 discover and reject when too bright?rawImage-8787-57476-shortexp bad, _slow_dark ok
-
+set timeouts!!!1
 """
 from __future__ import division, absolute_import
 
