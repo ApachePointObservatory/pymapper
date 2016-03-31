@@ -121,7 +121,7 @@ class Camera(object):
         unprocessedFileList = self.getUnprocessedFileList()
         if unprocessedFileList:
             print("processing images %s to %s"%tuple([os.path.split(_img)[-1] for _img in [unprocessedFileList[0], unprocessedFileList[-1]]]))
-            nonBlock = multiprocessImage(unprocessedFileList, self.multiprocessNext, block=True)
+            nonBlock = multiprocessImage(unprocessedFileList, self.multiprocessNext, block=False)
         else:
             # no files to process.
             if self.acquiring:

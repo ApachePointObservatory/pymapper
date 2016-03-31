@@ -5,6 +5,7 @@ import glob
 import os
 import time
 from multiprocessing import Pool
+import traceback
 
 import numpy
 import scipy.ndimage
@@ -39,7 +40,7 @@ def processImage(imageFile):
         xyCtr = pyGuideCentroids[0].xyCtr
         rad = pyGuideCentroids[0].rad
     except Exception as e:
-        print("Exception in pyGuide", e)
+        traceback.print_exc()
     return dict((
                     ("imageFile", imageFile),
                     ("counts", counts),
