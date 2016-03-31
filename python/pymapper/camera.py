@@ -37,17 +37,11 @@ def unpickleCentroids(imageDir):
 
 class Camera(object):
     def __init__(self, imageDir):
-        # self.fileNumSeen = 1
-        self.fileNumProc = 1
-        # self.unprocessedImages = collections.deque([])
-        # self.timeStamps = []
-        # self.imgLoadTimes = []
-        # self.watchLoop = LoopingCall(self.watchDirectory)
         self.acquiring = False
         self.process = None
         self.imageDir = imageDir
         assert os.path.exists(imageDir), "%s doesn't exist, create it"%imageDir
-        # clean up any existing files
+        # whine if this directory already has images
         assert len(self.getAllImgFiles())==0, "%s is not empty!"%imageDir
         self.acquisionCB = None
         self.procImgCall = None
@@ -82,12 +76,12 @@ class Camera(object):
         """call callFunc when acquision has started (first image seen in directory)
         """
         if callFunc is not None:
-            print("setting acquisiont cb", callFunc)
+            print("setting acquision cb", callFunc)
             self.acquisitionCB = callFunc
         self.acquiring = True
+        # this process initializes and starts the camera
         self.process = subprocess.Popen(EXE, cwd=self.imageDir)
         self.waitForFirstImage()
-
 
     def stopAcquisition(self):
         print("Stopping Camera Acquision")
