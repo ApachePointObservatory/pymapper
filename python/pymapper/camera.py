@@ -111,6 +111,7 @@ class Camera(object):
 
     def multiprocessImageLoop(self, centroidList=None):
         # called recursively until all images are (multi!) processed
+        print("multiprocessImageLoop")
         if centroidList:
             # this is passed via callback from a previous iteration of
             # this multiprocessing loop, add these new output to the
