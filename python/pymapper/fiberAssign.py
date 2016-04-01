@@ -17,7 +17,7 @@ import numpy
 from scipy.optimize import fmin
 
 import matplotlib
-matplotlib.use("Agg")
+# matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from sdss.utilities.yanny import yanny
@@ -35,7 +35,7 @@ FWHMFINE = 0.1 # mm
 MMPERINCH = 25.4 # mm per inch
 # plates have 32 inch diameter
 PLATERADIUS = 32 * MMPERINCH / 2.
-# MATCHTHRESH = 3 #mm (require a match to be within this threshold to be considered robust)
+# MATCHTHRESHb = 3 #mm (require a match to be within this threshold to be considered robust)
 
 class ModeledTrace(object):
     def __init__(self, fiberSpacing, blockSpacing):
@@ -422,7 +422,6 @@ class FocalSurfaceSolver(object):
         # "centroid" detection by weighted counts..
         detectionCenters = []
         for detectedFiber in self.detectedFiberList:
-            print(detectedFiber)
             xyCenters = [numpy.asarray(xyCenter) for xyCenter in detectedFiber.xyCtrs]
             counts = detectedFiber.counts
             detectionCenters.append(numpy.average(xyCenters, axis=0, weights=counts))

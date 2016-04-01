@@ -6,6 +6,7 @@ import os
 import glob
 import subprocess
 import pickle
+import time
 
 from twisted.internet import reactor
 
@@ -91,6 +92,7 @@ class Camera(object):
     def multiprocessDone(self):
         print("All frames processed!")
         print("pickling centroid list")
+        print("processed %.2f frames per second"% (len(self.centroidList)/(time.time()-self.processingStart)))
         pickleCentroids(self.centroidList, self.imageDir)
         self.procImgCall()
 
@@ -105,26 +107,34 @@ class Camera(object):
             # the first image is here, we're free to start
             # processing them
             reactor.callLater(0., self.multiprocessImageLoop)
+            self.processingStart = time.time()
         else:
             # first image not seen yet try again
-            print("waiting for first image")
             reactor.callLater(0., self.waitForFirstImage)
 
-    def multiprocessNext(self, centroidList):
-        print("multiprocessNext")
-        self.centroidList.extend(centroidList)
-        reactor.callLater(0., self.multiprocessImageLoop)
+    # def multiprocessNext(self, centroidList):
+    #     print("multiprocessNext")
+    #     self.centroidList.extend(centroidList)
+    #     self.multiprocessImageLoop()
+        # reactor.callLater(0., self.multiprocessImageLoop)
 
-    def multiprocessImageLoop(self):
+    def multiprocessImageLoop(self, centroidList=None):
         # called recursively until all images are (multi!) processed
         print("multiprocessImageLoop")
+        if centroidList:
+            print("adding %i centroids"%len(centroidList))
+            self.centroidList.extend(centroidList)
         unprocessedFileList = self.getUnprocessedFileList()
+        # don't process more than 20 images at a time
+        unprocessedFileList = unprocessedFileList[:50]
         if unprocessedFileList:
             print("processing images %s to %s"%tuple([os.path.split(_img)[-1] for _img in [unprocessedFileList[0], unprocessedFileList[-1]]]))
-            nonBlock = multiprocessImage(unprocessedFileList, self.multiprocessNext, block=False)
+            nonBlock = multiprocessImage(unprocessedFileList, self.multiprocessImageLoop, block=False)
         else:
             # no files to process.
+            print("no files to process")
             if self.acquiring:
+                print("still acquiring")
                 # camera is still acquiring, so continue calling myself
                 reactor.callLater(0., self.multiprocessImageLoop)
             else:

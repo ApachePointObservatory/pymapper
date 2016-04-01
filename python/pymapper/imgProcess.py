@@ -36,10 +36,13 @@ def processImage(imageFile):
     rad = None
     try:
         pyGuideCentroids = PyGuide.findStars(imgData, None, None, CCDInfo)[0]
-        counts = pyGuideCentroids[0].counts
-        xyCtr = pyGuideCentroids[0].xyCtr
-        rad = pyGuideCentroids[0].rad
+        # did we get any centroids?
+        if pyGuideCentroids:
+            counts = pyGuideCentroids[0].counts
+            xyCtr = pyGuideCentroids[0].xyCtr
+            rad = pyGuideCentroids[0].rad
     except Exception as e:
+        print("some issue with pyguide on img (skipping): ", imageFile)
         traceback.print_exc()
     return dict((
                     ("imageFile", imageFile),
@@ -128,7 +131,6 @@ class DetectedFiber(object):
 def multiprocessImage(imageFileList, callFunc, block=False):
     # may want to try map_async
     p = Pool(5)
-    print("imageFileList, multiprocess", imageFileList)
     if block:
         output = p.map(processImage, imageFileList)
         callFunc(output)
@@ -162,20 +164,20 @@ def sortDetections(brightestCentroidList):
                 # print('new detection:', os.path.split(imageFile)[-1], brightestCentroid.counts, brightestCentroid.xyCtr)
                 detectedFibers.append(DetectedFiber(brightestCentroid))
 
-        # self.prevFrames.append(imageFile)
-        #imageFile = brightestCentroid["imageFile"]
-        #color = "r" if isNewDetection else "b"
-        #fig = plt.figure(figsize=(10,10));plt.imshow(scipy.ndimage.imread(imageFile), vmin=0, vmax=10)#plt.show(block=False)
-        #plt.scatter(0, 0, s=80, facecolors='none', edgecolors='b')
-        #if brightestCentroid["xyCtr"] is not None:
-        #    x,y = brightestCentroid["xyCtr"]
-        #    plt.scatter(x, y, s=80, facecolors='none', edgecolors=color)
-        #frameNumber = int(imageFile.split("img")[-1].split(".")[0])
-        #zfilled = "%i"%frameNumber
-        #zfilled = zfilled.zfill(5)
-        #dd = os.path.split(imageFile)[0]
-        #nfn = os.path.join(dd, "pyguide%s.png"%zfilled)
-        #fig.savefig(nfn); plt.close(fig)    # close the figure
+        if False:
+            imageFile = brightestCentroid["imageFile"]
+            color = "r" if isNewDetection else "b"
+            fig = plt.figure(figsize=(10,10));plt.imshow(scipy.ndimage.imread(imageFile), vmin=0, vmax=10)#plt.show(block=False)
+            plt.scatter(0, 0, s=80, facecolors='none', edgecolors='b')
+            if brightestCentroid["xyCtr"] is not None:
+               x,y = brightestCentroid["xyCtr"]
+               plt.scatter(x, y, s=80, facecolors='none', edgecolors=color)
+            frameNumber = int(imageFile.split("img")[-1].split(".")[0])
+            zfilled = "%i"%frameNumber
+            zfilled = zfilled.zfill(5)
+            dd = os.path.split(imageFile)[0]
+            nfn = os.path.join(dd, "pyguide%s.png"%zfilled)
+            fig.savefig(nfn); plt.close(fig)    # close the figure
         # if crashMe:
         #     raise RuntimeError("Non-unique detection!!!!")
     return detectedFibers

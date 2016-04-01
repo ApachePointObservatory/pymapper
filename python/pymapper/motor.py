@@ -12,7 +12,7 @@ from twisted.internet import reactor
 HOSTNAME = "map-laser.astro.washington.edu"
 # HOSTNAME = "localhost"
 PORT = 15000
-STARTPOS = 27 #mm
+STARTPOS = 27 #mm 124 beg last block
 #ENDPOS = 100 #mm
 ENDPOS = 137 #mm
 SCANSPEED = 0.5 ## mm/sec
@@ -188,7 +188,7 @@ class MotorController(object):
             if not dataline:
                 # ignore blank strings...
                 continue
-            print("got some data", dataline)
+            print("laser output:", dataline)
             # right now I only care if the axis is homed
             # don't care about managing any other status bits,
             # however add a parser here to keep track of things
@@ -218,7 +218,6 @@ class MotorController(object):
         self.runQueue()
 
     def runQueue(self):
-        print("running queue")
         if not self.currCmd.isDone:
             # do nothing, command already executing
             return
