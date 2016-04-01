@@ -111,13 +111,13 @@ class DetectedFiber(object):
     def rad(self):
         return numpy.average([cent["rad"] for cent in self.centroidList], axis=0, weights=self.counts)
 
-    def belongs2me(self, centroidDict):
+    def belongs2me(self, centroidDict, minSep=MINSEP):
         # if center moves by more than 0.25 pixels
         # doesn't belong
         dist = numpy.linalg.norm(numpy.subtract(centroidDict["xyCtr"], self.xyCtr))
         # if dist < 3:
         #     print("belongs to", dist, self.imageFiles)
-        return dist < MINSEP
+        return dist < minSep
         # print("dist!", dist, self.imageFiles)
         # return dist<(self.rad/2.)
 
@@ -138,7 +138,7 @@ def multiprocessImage(imageFileList, callFunc, block=False):
     else:
         return p.map_async(processImage, imageFileList, callback=callFunc)
 
-def sortDetections(brightestCentroidList):
+def sortDetections(brightestCentroidList, plot=False, minCounts=MINCOUNTS, minSep=MINSEP):
     """Reorganize detection list into groups
     of detections (1 group per fiber)
     """
@@ -150,7 +150,7 @@ def sortDetections(brightestCentroidList):
             isNewDetection = True
             # search through every previous detection
             for prevDetection in detectedFibers:
-                if prevDetection.belongs2me(brightestCentroid):
+                if prevDetection.belongs2me(brightestCentroid, minSep):
                     if isNewDetection == False:
                         crashMe = True
                         print("bad bad, crash me!")
@@ -164,7 +164,7 @@ def sortDetections(brightestCentroidList):
                 # print('new detection:', os.path.split(imageFile)[-1], brightestCentroid.counts, brightestCentroid.xyCtr)
                 detectedFibers.append(DetectedFiber(brightestCentroid))
 
-        if False:
+        if plot:
             imageFile = brightestCentroid["imageFile"]
             color = "r" if isNewDetection else "b"
             fig = plt.figure(figsize=(10,10));plt.imshow(scipy.ndimage.imread(imageFile), vmin=0, vmax=10)#plt.show(block=False)

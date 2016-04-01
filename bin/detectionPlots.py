@@ -1,4 +1,4 @@
-"""Routines for processing images from the lco mapper
+"""recursive diving script for generating pyguide centroid plots.
 """
 from __future__ import division, absolute_import
 
