@@ -11,9 +11,9 @@ from pymapper.camera import unpickleCentroids
 MINCOUNTS = 0
 MINSEP = 3.5 # min between fibers separation in pixels
 
-def findRawImgDirs(self):
+def findRawImgDirs():
     rawImgDirs = []
-    for aDir in os.walk("/home/mapper/scan"):
+    for aDir in os.walk("/home/lcomapper/scan"):
         if "rawImage" in aDir[0]:
             rawImgDirs.append(aDir[0])
     return rawImgDirs
