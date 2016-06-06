@@ -209,7 +209,7 @@ def convToFits(imageFileDirectory, flatImg, frameStartNum, frameEndNum=None, img
 
 if __name__ == "__main__":
     def callMeWhenDone(brightestCentroidList):
-        detectedFiberList = sortDetections(brightestCentroidList, plot=True)
+        detectedFiberList = sortDetections(brightestCentroidList, plot=False)
         print("Done, found ", len(detectedFibers), "fibers")
 
     imgDir = "/home/lcomapper/Documents/Camera_test/test014"
