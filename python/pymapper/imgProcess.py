@@ -208,18 +208,35 @@ def convToFits(imageFileDirectory, flatImg, frameStartNum, frameEndNum=None, img
     saveImage()
 
 if __name__ == "__main__":
-    imgDir = "/home/lcomapper/scan/57476/rawImage-8787-57476-shortexp"
+    def callMeWhenDone(brightestCentroidList):
+        detectedFiberList = sortDetections(brightestCentroidList, plot=True)
+        print("Done, found ", len(detectedFiberList.detectedFibers), "fibers")
+
+    imgDir = "/home/lcomapper/Documents/Camera_test/test014"
     imgBase = "img"
     flatImg = None
-    nImg = len(glob.glob(os.path.join(imgDir, "img*.bmp")))
+    # build the image list (in the correct order, glob doesn't do it correctly)
+    unsortedImgs = glob.glob(os.path.join(imgDir, "img*.bmp"))
+    frameNum = 1
+    sortedImgs = []
+    while True:
+        imgName = os.path.join(imgDir, "img%i.bmp"%frameNum)
+        if imgName in unsortedImgs:
+            sortedImgs.append(imgName)
+            frameNum += 1
+        else:
+            break
+    print("going to process ", len(sortedImgs), " images")
+    block = multiprocessImage(sortedImgs, callMeWhenDone, block=True)
+
     # flatImgList = [os.path.join(imgDir, "%s%i.bmp"%(imgBase, ii)) for ii in range(nImg-7,nImg)]
     # flatImg = createFlat(flatImgList)
-    frameStartNum = 1
-    frameEndNum = None
+    # frameStartNum = 1
+    # frameEndNum = None
     # detectedFiberList = batchProcess(imgDir, flatImg, frameStartNum, frameEndNum, imgBase)
-    detectedFiberList = batchMultiprocess(imgDir, flatImg)
+    # detectedFiberList = batchMultiprocess(imgDir, flatImg)
     # remove those not detected in more than 1 frame
     # detectedFiberList = [detectedFiber for detectedFiber in detectedFiberList.detectedFibers if len(detectedFiber.imageFiles)>1]
-    print("Done, found ", len(detectedFiberList.detectedFibers), "fibers")
+    # print("Done, found ", len(detectedFiberList.detectedFibers), "fibers")
 
 
