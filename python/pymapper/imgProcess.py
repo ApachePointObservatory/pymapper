@@ -209,10 +209,10 @@ def convToFits(imageFileDirectory, flatImg, frameStartNum, frameEndNum=None, img
 
 if __name__ == "__main__":
     def callMeWhenDone(brightestCentroidList):
-        detectedFiberList = sortDetections(brightestCentroidList, plot=False)
+        detectedFiberList = sortDetections(brightestCentroidList, plot=True)
         print("Done, found ", len(detectedFiberList), "fibers")
 
-    imgDir = "/home/lcomapper/Documents/Camera_test/test014"
+    imgDir = "/home/lcomapper/Documents/Camera_test/test061"
     imgBase = "img"
     flatImg = None
     # build the image list (in the correct order, glob doesn't do it correctly)

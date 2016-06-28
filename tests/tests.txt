@@ -3,3 +3,7 @@ remove one image from directory
 disconnected camera
 disconnected motor
 unhomed motor
+fake camera
+fake motor
+verify that after multiprocessing files are in correct order.
+
