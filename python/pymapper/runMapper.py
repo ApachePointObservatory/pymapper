@@ -229,6 +229,12 @@ if __name__ == "__main__":
         detectedFiberList = sortDetections(camera.centroidList, plot=args.makePlots)
         # pickle and save the detection list
         pickleDetectionList(detectedFiberList, scanDir)
+        logging.info("scan finished.")
+        logging.info("found %i fibers"%len(detectedFiberList))
+        nImages = len(glob.glob(os.path.join(scanDir, "*.bmp")))
+        scanTime = abs(args.endPos - args.startPos)/float(args.scanSpeed)
+        fps = nImages / scanTime
+        logging.info("%i images taken, FPS: %.4f"%(nImages, fps))
         # not yet ready to solve plate:
 
         # plugMapPath = pathPlugMapP(plateID)
