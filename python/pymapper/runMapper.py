@@ -91,6 +91,7 @@ def pickleDetectionList(detectionList, scanDir):
     output.close()
 
 def main(argv=None):
+    global baseDir
     parser = argparse.ArgumentParser(
         prog=os.path.basename(sys.argv[0]),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
