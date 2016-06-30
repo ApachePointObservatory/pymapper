@@ -264,11 +264,13 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    finally:
-        reactor.stop()
-        sys.exit()
+    main()
+    #try:
+    #    main()
+    #except Exception as e:
+    #    reactor.stop()
+    #    raise(e)
+       # sys.exit()
 
 
 
