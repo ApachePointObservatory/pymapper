@@ -97,7 +97,7 @@ class MotorController(object):
         ):
         """readyCallback called when MotorController is ready to scan!
         """
-        self.hostname = HOSTNAME
+        self.hostname = hostname
         self.port = port
         self.startPos = startPos
         self.endPos = endPos
@@ -134,6 +134,7 @@ class MotorController(object):
 
     def connFailed(self, failure):
         print("conn failed errback")
+        print(str(failure))
         reactor.stop()
         # raise RuntimeError("conn failed", str(failure))
 
