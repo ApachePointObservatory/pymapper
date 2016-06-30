@@ -204,6 +204,8 @@ if __name__ == "__main__":
         startPos = args.startPos,
         endPos = args.endPos,
         scanSpeed = args.scanSpeed,
+        hostname = "10.3.252.13",
+        port = 15000,
         )
 
     # set up callback chains for mapping process
