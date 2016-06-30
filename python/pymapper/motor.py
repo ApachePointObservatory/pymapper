@@ -31,7 +31,7 @@ class Command(object):
     def setDone(self):
         if self.isDone:
             raise RuntimeError("cannot set command %s done, already done!"%self.cmdStr)
-        print("setting", self.cmdStr, "done!")
+        logging.info("setting %s done!"%self.cmdStr)
         self.isDone = True
         for func in self.callFuncs:
             func()
@@ -57,24 +57,24 @@ class MotorProtocol(Protocol):
     def connectionMade(self):
         """Called when a connection is made
         """
-        print("connection made")
+        logging.info("connection made")
 
 class MotorClientFactory(ClientFactory):
     def __init__(self, motorControllerInstance):
         self.mci = motorControllerInstance
 
     def startedConnecting(self, connector):
-        print("Started to connect to motor.")
+        logging.info("Started to connect to motor.")
 
     def buildProtocol(self, addr):
-        print("Connected to motor.")
+        logging.info("Connected to motor.")
         return MotorProtocol(self.mci)
 
     # def clientConnectionLost(self, connector, reason):
-    #     print("Lost connection to motor.  Reason:", reason)
+    #     logging.info("Lost connection to motor.  Reason:", reason)
 
     # def clientConnectionFailed(self, connector, reason):
-    #     print("Connection failed!")
+    #     logging.info("Connection failed!")
         #raise RuntimeError("Connection to motor failed. Reason:%s"%reason)
 
 # class MotorStatus(object):
@@ -127,14 +127,14 @@ class MotorController(object):
         connDeferred.addErrback(self.connFailed)
 
     def disconnect(self):
-        print("disconnecting from ASCII server")
+        logging.info("disconnecting from ASCII server")
         return self.protocol.transport.loseConnection()
-        # print("killing twisted event loop")
+        # logging.info("killing twisted event loop")
         # reactor.stop()
 
     def connFailed(self, failure):
-        print("conn failed errback")
-        print(str(failure))
+        logging.info("conn failed errback")
+        logging.info(str(failure))
         reactor.stop()
         # raise RuntimeError("conn failed", str(failure))
 
@@ -142,7 +142,7 @@ class MotorController(object):
         self.protocol = protocol
 
     def prepareToScan(self, foo):
-        print("preparing for scan")
+        logging.info("preparing for scan")
         # foo is ignored arg passed via callback framework
         # could send a stop first...
         self.getStatus(callFunc=self.checkHomeThenMove)
@@ -154,7 +154,7 @@ class MotorController(object):
         self.resetAfterScan()
 
     def resetAfterScan(self):
-        print("resetAfterScan")
+        logging.info("resetAfterScan")
         # foo is ignored arg passed via callback framework
         # could send a stop first...
         # self.getStatus(callFunc=self.checkHomeThenMove)
@@ -163,11 +163,11 @@ class MotorController(object):
 
     def checkHomeThenMove(self):
         if not self.isHomed:
-            print("Slit Head Axis is not homed.  Home it before proceeding!")
+            logging.info("Slit Head Axis is not homed.  Home it before proceeding!")
             reactor.stop()
             # raise RuntimeError("Slit Head Axis is not homed.  Home it before proceeding!")
         else:
-            print("Axis is Homed!!")
+            logging.info("Axis is Homed!!")
             # move motor in position for scan.
             self.setSpeed(self.quickSpeed)
             self.move(self.startPos)
@@ -175,35 +175,35 @@ class MotorController(object):
             self.laserOn(callFunc=self.readyCallback)
 
     def getStatus(self, callFunc=None):
-        print("getStatus")
+        logging.info("getStatus")
         return self.queueCommand("status", callFunc=callFunc)
 
     def setSpeed(self, value, callFunc=None):
-        print("set speed to %.2f"%float(value))
+        logging.info("set speed to %.2f"%float(value))
         return self.queueCommand("speed %.2f"%float(value), callFunc=callFunc)
 
     def move(self, value, callFunc=None):
-        print("move to %.2f"%float(value))
+        logging.info("move to %.2f"%float(value))
         return self.queueCommand("move %.2f"%float(value), callFunc=callFunc)
 
     def laserOn(self, callFunc=None):
-        print("laser on")
+        logging.info("laser on")
         return self.queueCommand("lonn", callFunc=callFunc)
 
     def laserOff(self, callFunc=None):
-        print("laser off")
+        logging.info("laser off")
         return self.queueCommand("loff", callFunc=callFunc)
 
     def dataReceived(self, data):
         if self.currCmd is None:
-            print("unsolicited dataReceived: %s"%str(data))
+            logging.info("unsolicited dataReceived: %s"%str(data))
             return # don't do anything with unsolicited output...
         for dataline in data.split("\n"):
             dataline = dataline.strip().lower()
             if not dataline:
                 # ignore blank strings...
                 continue
-            print("laser output:", dataline)
+            logging.info("laser output:", dataline)
             # right now I only care if the axis is homed
             # don't care about managing any other status bits,
             # however add a parser here to keep track of things
@@ -222,11 +222,11 @@ class MotorController(object):
         if not self.currCmd.isDone:
             raise RuntimeError("cannot send %s, currently busy with %s"%(command.cmdStr, self.currCmd.cmdStr))
         self.currCmd = command
-        print("sending: ", command.cmdStr)
+        logging.info("sending: ", command.cmdStr)
         self.protocol.transport.write(command.cmdStr)
 
     def queueCommand(self, cmdStr, callFunc=None):
-        print("queueCommand", cmdStr)
+        logging.info("queueCommand", cmdStr)
         command = Command(cmdStr, callFunc=callFunc)
         command.addCallback(self.runQueue)
         self.commandQueue.append(command)
@@ -247,11 +247,11 @@ if __name__ == "__main__":
     mc = None
     def cleanup():
         global mc
-        print("Cleaning up")
+        logging.info("Cleaning up")
         mc.resetAfterScan()
     def imready():
         global mc
-        print("I'm READY!!!!")
+        logging.info("I'm READY!!!!")
         mc.scan(cleanup)
     mc = MotorController(imready)
     # reactor.callLater(mc.resetAfterScan)
