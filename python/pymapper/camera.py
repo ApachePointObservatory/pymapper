@@ -78,7 +78,7 @@ class Camera(object):
         """call callFunc when acquision has started (first image seen in directory)
         """
         if callFunc is not None:
-            logging.info("setting acquision cb", callFunc)
+            print("setting acquision cb", callFunc)
             self.acquisitionCB = callFunc
         self.acquiring = True
         # this process initializes and starts the camera
@@ -86,14 +86,14 @@ class Camera(object):
         self.waitForFirstImage()
 
     def stopAcquisition(self):
-        logging.info("Stopping Camera Acquision")
+        print("Stopping Camera Acquision")
         self.process.kill()
         self.acquiring = False
 
     def multiprocessDone(self):
-        logging.info("All frames processed!")
-        logging.info("pickling centroid list")
-        logging.info("processed %.2f frames per second"% (len(self.centroidList)/(time.time()-self.processingStart)))
+        print("All frames processed!")
+        print("pickling centroid list")
+        print("processed %.2f frames per second"% (len(self.centroidList)/(time.time()-self.processingStart)))
         pickleCentroids(self.centroidList, self.imageDir)
         if self.procImgCall is not None:
             self.procImgCall()
@@ -102,9 +102,9 @@ class Camera(object):
         # loop here until the first image is seen.  Once it is
         # fire the acquisition callback and begin processing
         if os.path.exists(self.getNthFile(1)):
-            logging.info("acquisition started")
+            print("acquisition started")
             if self.acquisitionCB is not None:
-                logging.info("firing acquisition callback")
+                print("firing acquisition callback")
                 reactor.callLater(0., self.acquisitionCB)
             # the first image is here, we're free to start
             # processing them
@@ -115,28 +115,28 @@ class Camera(object):
             reactor.callLater(0., self.waitForFirstImage)
 
     # def multiprocessNext(self, centroidList):
-    #     logging.info("multiprocessNext")
+    #     print("multiprocessNext")
     #     self.centroidList.extend(centroidList)
     #     self.multiprocessImageLoop()
         # reactor.callLater(0., self.multiprocessImageLoop)
 
     def multiprocessImageLoop(self, centroidList=None):
         # called recursively until all images are (multi!) processed
-        logging.info("multiprocessImageLoop")
+        print("multiprocessImageLoop")
         if centroidList:
-            logging.info("adding %i centroids"%len(centroidList))
+            print("adding %i centroids"%len(centroidList))
             self.centroidList.extend(centroidList)
         unprocessedFileList = self.getUnprocessedFileList()
         # don't process more than 20 images at a time
         unprocessedFileList = unprocessedFileList[:50]
         if unprocessedFileList:
-            logging.info("processing images %s to %s"%tuple([os.path.split(_img)[-1] for _img in [unprocessedFileList[0], unprocessedFileList[-1]]]))
+            print("processing images %s to %s"%tuple([os.path.split(_img)[-1] for _img in [unprocessedFileList[0], unprocessedFileList[-1]]]))
             nonBlock = multiprocessImage(unprocessedFileList, self.multiprocessImageLoop, block=False)
         else:
             # no files to process.
-            logging.info("no files to process")
+            print("no files to process")
             if self.acquiring:
-                logging.info("still acquiring")
+                print("still acquiring")
                 # camera is still acquiring, so continue calling myself
                 reactor.callLater(0., self.multiprocessImageLoop)
             else:

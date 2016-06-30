@@ -29,7 +29,7 @@ def processImage(imageFile):
     @param[in] imageFile. String
 
     """
-    # logging.info("processing img: ", os.path.split(imageFile)[-1])
+    # print("processing img: ", os.path.split(imageFile)[-1])
     imgData = scipy.ndimage.imread(imageFile)
     counts = None
     xyCtr = None
@@ -42,8 +42,8 @@ def processImage(imageFile):
             xyCtr = pyGuideCentroids[0].xyCtr
             rad = pyGuideCentroids[0].rad
     except Exception as e:
-        logging.info("some issue with pyguide on img (skipping): ", imageFile)
-        traceback.logging.info_exc()
+        print("some issue with pyguide on img (skipping): ", imageFile)
+        traceback.print_exc()
     return dict((
                     ("imageFile", imageFile),
                     ("counts", counts),
@@ -62,7 +62,7 @@ def to2d(array1d, imshape):
 
 def saveImage(filename, array2d):
     if os.path.exists(filename):
-        logging.info("removing previous", filename)
+        print("removing previous", filename)
         os.remove(filename)
     # median filter the image
     # array2d = scipy.ndimage.median_filter(array2d, size=1)
@@ -116,9 +116,9 @@ class DetectedFiber(object):
         # doesn't belong
         dist = numpy.linalg.norm(numpy.subtract(centroidDict["xyCtr"], self.xyCtr))
         # if dist < 3:
-        #     logging.info("belongs to", dist, self.imageFiles)
+        #     print("belongs to", dist, self.imageFiles)
         return dist < minSep
-        # logging.info("dist!", dist, self.imageFiles)
+        # print("dist!", dist, self.imageFiles)
         # return dist<(self.rad/2.)
 
     def add2me(self, centroidDict):
@@ -153,15 +153,15 @@ def sortDetections(brightestCentroidList, plot=False, minCounts=MINCOUNTS, minSe
                 if prevDetection.belongs2me(brightestCentroid, minSep):
                     if isNewDetection == False:
                         crashMe = True
-                        logging.info("bad bad, crash me!")
-                    # logging.info("previous detection!!!", brightestCentroid.xyCtr)
+                        print("bad bad, crash me!")
+                    # print("previous detection!!!", brightestCentroid.xyCtr)
                     isNewDetection = False
-                    # logging.info("previous detection", os.path.split(imageFile)[-1], prevDetection.imageFiles)
+                    # print("previous detection", os.path.split(imageFile)[-1], prevDetection.imageFiles)
                     prevDetection.add2me(brightestCentroid)
                     # break # assign to the first that works???
                 # was this is a new detection?
             if isNewDetection:
-                # logging.info('new detection:', os.path.split(imageFile)[-1], brightestCentroid.counts, brightestCentroid.xyCtr)
+                # print('new detection:', os.path.split(imageFile)[-1], brightestCentroid.counts, brightestCentroid.xyCtr)
                 detectedFibers.append(DetectedFiber(brightestCentroid))
 
         if plot:
@@ -199,9 +199,9 @@ def batchMultiprocess(imageFileDirectory, flatImg, imgBaseName="img", imgExtensi
     brightestCentroidList = multiprocessImage(imageFilesSorted)
     detectedFiberList = sortDetections(brightestCentroidList)
     totaltime = time.time() - tstart
-    logging.info("total time", totaltime)
-    logging.info(nImageFiles/(totaltime), "frames per second processed")
-    logging.info("sorting detections")
+    print("total time", totaltime)
+    print(nImageFiles/(totaltime), "frames per second processed")
+    print("sorting detections")
     return detectedFiberList
 
 def convToFits(imageFileDirectory, flatImg, frameStartNum, frameEndNum=None, imgBaseName="img", imgExtension="bmp"):
@@ -210,7 +210,7 @@ def convToFits(imageFileDirectory, flatImg, frameStartNum, frameEndNum=None, img
 if __name__ == "__main__":
     def callMeWhenDone(brightestCentroidList):
         detectedFiberList = sortDetections(brightestCentroidList, plot=True)
-        logging.info("Done, found ", len(detectedFiberList), "fibers")
+        print("Done, found ", len(detectedFiberList), "fibers")
 
     imgDir = "/home/lcomapper/Documents/Camera_test/test061"
     imgBase = "img"
@@ -226,7 +226,7 @@ if __name__ == "__main__":
             frameNum += 1
         else:
             break
-    logging.info("going to process ", len(sortedImgs), " images")
+    print("going to process ", len(sortedImgs), " images")
     block = multiprocessImage(sortedImgs, callMeWhenDone, block=True)
 
     # flatImgList = [os.path.join(imgDir, "%s%i.bmp"%(imgBase, ii)) for ii in range(nImg-7,nImg)]
@@ -237,6 +237,6 @@ if __name__ == "__main__":
     # detectedFiberList = batchMultiprocess(imgDir, flatImg)
     # remove those not detected in more than 1 frame
     # detectedFiberList = [detectedFiber for detectedFiber in detectedFiberList.detectedFibers if len(detectedFiber.imageFiles)>1]
-    # logging.info("Done, found ", len(detectedFiberList.detectedFibers), "fibers")
+    # print("Done, found ", len(detectedFiberList.detectedFibers), "fibers")
 
 

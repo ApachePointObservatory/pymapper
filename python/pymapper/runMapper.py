@@ -185,11 +185,11 @@ if __name__ == "__main__":
     root.addHandler(ch)
 
 
-    logging.info("scanDir: %s"%scanDir)
-    logging.info("plate ID: %i"%args.plateID)
-    logging.info("motor start pos (mm): %.2f"%args.startPos)
-    logging.info("motor end pos (mm): %.2f"%args.endPos)
-    logging.info("motor scan speed (mm/sec): %.2f"%args.scanSpeed)
+    print("scanDir: %s"%scanDir)
+    print("plate ID: %i"%args.plateID)
+    print("motor start pos (mm): %.2f"%args.startPos)
+    print("motor end pos (mm): %.2f"%args.endPos)
+    print("motor scan speed (mm/sec): %.2f"%args.scanSpeed)
 
 
     # create directory to hold camera images
@@ -211,32 +211,32 @@ if __name__ == "__main__":
     # set up callback chains for mapping process
 
     def stopCamera():
-        logging.info("stopCamera")
+        print("stopCamera")
         # motor is done scanning, kill camera
         camera.stopAcquisition()
 
     def moveMotor():
         # camera is acquiring begin moving motor/laser
-        logging.info("moveMotor")
+        print("moveMotor")
         motorController.scan(callFunc=stopCamera)
 
     def startCamera():
         # motor is ready to move, begin snapping pics
-        logging.info("startCamera")
+        print("startCamera")
         camera.beginAcquisition(callFunc=moveMotor)
 
     def solvePlate():
         # load the (previously pickled centroid list)
-        logging.info("sorting detections. makePlots=%s"%str(args.makePlots))
+        print("sorting detections. makePlots=%s"%str(args.makePlots))
         detectedFiberList = sortDetections(camera.centroidList, plot=args.makePlots)
         # pickle and save the detection list
         pickleDetectionList(detectedFiberList, scanDir)
-        logging.info("scan finished.")
-        logging.info("found %i fibers"%len(detectedFiberList))
+        print("scan finished.")
+        print("found %i fibers"%len(detectedFiberList))
         nImages = len(glob.glob(os.path.join(scanDir, "*.bmp")))
         scanTime = abs(args.endPos - args.startPos)/float(args.scanSpeed)
         fps = nImages / scanTime
-        logging.info("%i images taken, FPS: %.4f"%(nImages, fps))
+        print("%i images taken, FPS: %.4f"%(nImages, fps))
         # not yet ready to solve plate:
 
         # plugMapPath = pathPlugMapP(plateID)
