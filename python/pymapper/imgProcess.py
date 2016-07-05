@@ -182,18 +182,21 @@ def sortDetections(brightestCentroidList, plot=False, minCounts=MINCOUNTS, minSe
         #     raise RuntimeError("Non-unique detection!!!!")
     return detectedFibers
 
-def batchMultiprocess(imageFileDirectory, flatImg, imgBaseName="img", imgExtension="bmp"):
-    """! Process all images in given directory
-    """
-    # detectedFiberList = DetectedFiberList(flatImg)
-    imageFiles = glob.glob(os.path.join(imageFileDirectory, "*."+imgExtension))
-    nImageFiles = len(imageFiles)
-    imageFilesSorted = [os.path.join(imageFileDirectory, "%s%i.%s"%(imgBaseName, num, imgExtension)) for num in range(1,nImageFiles)]
+def getSortedImages(imageFileDirectory, imgBaseName="img", imgExtension="bmp"):
     # warning image files are not sorted as expected, even after explicitly sorting
     # eg 999.jpg > 2000.jpg.  this is bad because image order matters very much
     # furthermore rather than
     # note image files are expected to be 1.jpg, 2.jpg, 3.jpg, ..., 354.jpg...
-    # while loop seems weird, but whatever
+    imageFiles = glob.glob(os.path.join(imageFileDirectory, "*."+imgExtension))
+    nImageFiles = len(imageFiles)
+    imageFilesSorted = [os.path.join(imageFileDirectory, "%s%i.%s"%(imgBaseName, num, imgExtension)) for num in range(1,nImageFiles)]
+    return imageFilesSorted
+
+def batchMultiprocess(imageFileDirectory, flatImg, imgBaseName="img", imgExtension="bmp"):
+    """! Process all images in given directory
+    """
+    # detectedFiberList = DetectedFiberList(flatImg)
+    imageFilesSorted = getSortedImages(imageFileDirectory, imgBaseName, imgExtension)
     frameNumber = frameStartNum
     tstart = time.time()
     brightestCentroidList = multiprocessImage(imageFilesSorted)
@@ -206,6 +209,14 @@ def batchMultiprocess(imageFileDirectory, flatImg, imgBaseName="img", imgExtensi
 
 def convToFits(imageFileDirectory, flatImg, frameStartNum, frameEndNum=None, imgBaseName="img", imgExtension="bmp"):
     saveImage()
+
+def getImgTimestamps(imageFileDirectory, imgBaseName="img", imgExtension="bmp"):
+    imageFilesSorted = getSortedImages(imageFileDirectory, imgBaseName, imgExtension)
+    timeStamps = []
+    for imgFile in imageFilesSorted:
+        timeStamps.append(time.ctime(os.path.getmtime(imgFile)))
+    return timeStamps
+
 
 if __name__ == "__main__":
     def callMeWhenDone(brightestCentroidList):
