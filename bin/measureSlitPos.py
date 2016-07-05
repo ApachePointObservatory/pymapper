@@ -35,7 +35,7 @@ def main(argv=None):
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description="Determine fiber positions on the slit."
         )
-    parser.add_argument("scanDir", help="""Directory containing scan"""
+    parser.add_argument("scanDir", help="""Directory containing scan""")
     scanDir = os.path.abspath(args.scanDir)
     if not os.path.exists(scanDir):
         raise RuntimeError("Scan directory does not exit: %s"%scanDir)
