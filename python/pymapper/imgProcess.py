@@ -214,7 +214,10 @@ def getImgTimestamps(imageFileDirectory, imgBaseName="img", imgExtension="bmp"):
     imageFilesSorted = getSortedImages(imageFileDirectory, imgBaseName, imgExtension)
     timeStamps = []
     for imgFile in imageFilesSorted:
-        timeStamps.append(time.ctime(os.path.getmtime(imgFile)))
+        timeStamps.append(os.path.getmtime(imgFile))
+    # normalize first image to have time=0
+    timeStamps = numpy.asarray(timeStamps)
+    timeStamps = timeStamps - timeStamps[0]
     return timeStamps
 
 
