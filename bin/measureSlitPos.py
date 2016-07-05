@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 import os
+import argparse
+import sys
+import pickle
 
 def extractValue(logLine):
     """Get the float value following the ":" in a line
@@ -36,6 +39,7 @@ def main(argv=None):
         description="Determine fiber positions on the slit."
         )
     parser.add_argument("scanDir", help="""Directory containing scan""")
+    args = parser.parse_args()
     scanDir = os.path.abspath(args.scanDir)
     if not os.path.exists(scanDir):
         raise RuntimeError("Scan directory does not exit: %s"%scanDir)
