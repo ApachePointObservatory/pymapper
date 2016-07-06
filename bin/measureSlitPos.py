@@ -101,10 +101,10 @@ def main(argv=None):
     # write fiber positions to list
     fiberPosFile = os.path.join(scanDir, "fiberpos.dat")
     with open(fiberPosFile, "w") as f:
-        f.writeLine("# Measured fiber positions for scan: %s"%scanDir)
-        f.writeLine("# Fiber Number   Motor Position (mm)")
+        f.write("# Measured fiber positions for scan: %s\n"%scanDir)
+        f.write("# Fiber Number   Motor Position (mm)\n")
         for ind, fiberPos in enumerate(fiberPositions):
-            f.writeLine("%i    %.6f"%(ind+1, fiberPos))
+            f.write("%i    %.6f\n"%(ind+1, fiberPos))
 
 if __name__ == "__main__":
     main()
