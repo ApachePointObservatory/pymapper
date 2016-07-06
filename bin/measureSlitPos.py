@@ -4,6 +4,34 @@ import argparse
 import sys
 import pickle
 
+import numpy
+import scipy
+
+from pymapper.imgProcess import getImgTimestamps
+
+class SlitHeadPosition(object):
+    def __init__(self, imgTimestamps, start, speed):
+        """
+        !Callable class for determining slit head position from an image number or set of image numbers
+        @param[in] imgTimestamps, list of timestamps corresponding to the image sequence
+        @param[in] start: motor start position
+        @param[in] speed: motor speed
+        """
+        imgNums = range(len(imgTimestamps))
+        motorPositions = start + speed*imgTimestamps
+        self.splineInterp = scipy.interpolate.UnivariateSpline(
+            x = imgNums,
+            y = motorPositions,
+            )
+
+    def __call__(self, imgNum):
+        """! solve for slithead position
+        @param[in] imgNum float describing image number position (eg fractional image numbers allowed)
+        @return motor position
+        """
+        return self.splineInterp(imgNum)
+
+
 def extractValue(logLine):
     """Get the float value following the ":" in a line
     """
@@ -56,6 +84,24 @@ def main(argv=None):
     pkl.close()
     if not len(detectedFiberList)==300:
         raise RuntimeError("Number of detections %i != 300"%len(detectedFiberList))
+    imgTimestamps = getImgTimestamps(scanDir)
+    slitHeadPosition = SlitHeadPosition(imgTimestamps, start, speed)
+    fiberPositions = []
+    for detection in detectedFiberList:
+        # weight the detection frame by the counts
+        imgNums = []
+        counts = []
+        for centroid in detection.centroidList:
+            baseDir, imgFile = os.path.split(centroid["imageFile"])
+            # img looks like img<int>.bmp, just get int part
+            imgNums.append(int(imgFile[3:].split(".")[0])) # slice off img
+            counts.append(centroid["counts"])
+        weightedCenter = slitHeadPosition(numpy.average(imgNums, weights=counts))
+        fiberPositions.append(weightedCenter)
+        print("center %.2f"%weightedCenter)
+
+
+
     import pdb; pdb.set_trace()
 
 if __name__ == "__main__":
