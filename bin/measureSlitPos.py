@@ -98,11 +98,13 @@ def main(argv=None):
             counts.append(centroid["counts"])
         weightedCenter = slitHeadPosition(numpy.average(imgNums, weights=counts))
         fiberPositions.append(weightedCenter)
-        print("center %.2f"%weightedCenter)
-
-
-
-    import pdb; pdb.set_trace()
+    # write fiber positions to list
+    fiberPosFile = os.path.join(scanDir, "fiberpos.dat")
+    with open(fiberPosFile, "w") as f:
+        f.writeline("# Measured fiber positions for scan: %s"%scanDir)
+        f.writeline("# Fiber Number   Motor Position (mm)")
+        for ind, fiberPos in enumerate(fiberPositions):
+            f.writeline("%i    %.6f"%(ind+1, fiberPos))
 
 if __name__ == "__main__":
     main()
