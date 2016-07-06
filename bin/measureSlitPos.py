@@ -5,7 +5,7 @@ import sys
 import pickle
 
 import numpy
-import scipy
+from scipy.interpolate import UnivariateSpline
 
 from pymapper.imgProcess import getImgTimestamps
 
@@ -19,7 +19,7 @@ class SlitHeadPosition(object):
         """
         imgNums = range(len(imgTimestamps))
         motorPositions = start + speed*imgTimestamps
-        self.splineInterp = scipy.interpolate.UnivariateSpline(
+        self.splineInterp = UnivariateSpline(
             x = imgNums,
             y = motorPositions,
             )
