@@ -8,10 +8,16 @@ import subprocess
 import pickle
 import time
 import logging
+import traceback
+from multiprocessing import Pool
+
+import scipy.ndimage
+
+import PyGuide
 
 from twisted.internet import reactor
 
-from pymapper.imgProcess import multiprocessImage
+# from pymapper.imgProcess import multiprocessImage
 # how to ensure that the image program is killed?
 
 # EXE = "testFakeWrite.py"
@@ -22,6 +28,7 @@ EXE = "AsynchronousGrabWrite"
 BASENAME = "img"
 EXTENSION = "bmp"
 
+CCDInfo = PyGuide.CCDInfo(bias=50, readNoise=10, ccdGain=1)
 # self.imageDir = os.path.join(os.environ["PYMAPPER_DIR"], "tests")
 
 def pickleCentroids(centroidList, imageDir):
@@ -38,7 +45,10 @@ def unpickleCentroids(imageDir):
    return centroidList
 
 class Camera(object):
-    def __init__(self, imageDir):
+    def __init__(self, imageDir, motorStart, motorSpeed):
+        self.motorStart = motorStart
+        self.motorSpeed = motorSpeed
+        self.tZero = None # timestamp of the first image
         self.acquiring = False
         self.process = None
         self.imageDir = imageDir
@@ -103,6 +113,8 @@ class Camera(object):
         # fire the acquisition callback and begin processing
         if os.path.exists(self.getNthFile(1)):
             logging.info("acquisition started")
+            # set the zeroth timestamp for determining motor position for each image
+            self.tZero = os.path.getmtime(self.getNthFile(1))
             if self.acquisitionCB is not None:
                 logging.info("firing acquisition callback")
                 reactor.callLater(0., self.acquisitionCB)
@@ -131,7 +143,7 @@ class Camera(object):
         unprocessedFileList = unprocessedFileList[:50]
         if unprocessedFileList:
             logging.info("processing images %s to %s"%tuple([os.path.split(_img)[-1] for _img in [unprocessedFileList[0], unprocessedFileList[-1]]]))
-            nonBlock = multiprocessImage(unprocessedFileList, self.multiprocessImageLoop, block=False)
+            self.multiprocessImage(unprocessedFileList, self.multiprocessImageLoop, block=False)
         else:
             # no files to process.
             logging.info("no files to process")
@@ -143,7 +155,45 @@ class Camera(object):
                 # camera is done, no remaining files to process
                 self.multiprocessDone()
 
+    def multiprocessImage(self, imageFileList, callFunc, block=False):
+        # may want to try map_async
+        p = Pool(5)
+        if block:
+            output = p.map(self.processImage, imageFileList)
+            callFunc(output)
+            return None
+        else:
+            return p.map_async(self.processImage, imageFileList, callback=callFunc)
 
+    def processImage(self, imageFile):
+        """! Process a single image
+
+        @param[in] imageFile. String
+
+        """
+        # print("processing img: ", os.path.split(imageFile)[-1])
+        timestamp = os.path.getmtime(imageFile) - self.tZero
+        imgData = scipy.ndimage.imread(imageFile)
+        counts = None
+        xyCtr = None
+        rad = None
+        try:
+            pyGuideCentroids = PyGuide.findStars(imgData, None, None, CCDInfo)[0]
+            # did we get any centroids?
+            if pyGuideCentroids:
+                counts = pyGuideCentroids[0].counts
+                xyCtr = pyGuideCentroids[0].xyCtr
+                rad = pyGuideCentroids[0].rad
+        except Exception:
+            print("some issue with pyguide on img (skipping): ", imageFile)
+            traceback.print_exc()
+        return dict((
+                        ("imageFile", imageFile),
+                        ("counts", counts),
+                        ("xyCtr", xyCtr),
+                        ("rad", rad),
+                        ("motorPos", self.motorStart + self.motorSpeed*timestamp)
+                    ))
 
 if __name__ == "__main__":
     camera = Camera()

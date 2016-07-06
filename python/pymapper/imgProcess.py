@@ -3,9 +3,6 @@
 from __future__ import division, absolute_import
 import glob
 import os
-import time
-from multiprocessing import Pool
-import traceback
 
 import numpy
 import scipy.ndimage
@@ -15,41 +12,11 @@ import matplotlib.pyplot as plt
 
 from astropy.io import fits
 
-import PyGuide
-
 THRESH = 50
 MINCOUNTS = 0
 MINSEP = 3.5 # min between fibers separation in pixels
 
-CCDInfo = PyGuide.CCDInfo(bias=50, readNoise=10, ccdGain=1)
 
-def processImage(imageFile):
-    """! Process a single image
-
-    @param[in] imageFile. String
-
-    """
-    # print("processing img: ", os.path.split(imageFile)[-1])
-    imgData = scipy.ndimage.imread(imageFile)
-    counts = None
-    xyCtr = None
-    rad = None
-    try:
-        pyGuideCentroids = PyGuide.findStars(imgData, None, None, CCDInfo)[0]
-        # did we get any centroids?
-        if pyGuideCentroids:
-            counts = pyGuideCentroids[0].counts
-            xyCtr = pyGuideCentroids[0].xyCtr
-            rad = pyGuideCentroids[0].rad
-    except Exception as e:
-        print("some issue with pyguide on img (skipping): ", imageFile)
-        traceback.print_exc()
-    return dict((
-                    ("imageFile", imageFile),
-                    ("counts", counts),
-                    ("xyCtr", xyCtr),
-                    ("rad", rad)
-                ))
 
 def applyThreshold(array2d, thresh):
     # which pixels are greater than sigmaDetect sigma from the mean
@@ -108,6 +75,15 @@ class DetectedFiber(object):
         return [centroid["xyCtr"] for centroid in self.centroidList]
 
     @property
+    def motorPos(self):
+        # return center based on weighted counts
+        return numpy.average([cent["motorPos"] for cent in self.centroidList], axis=0, weights=self.counts)
+
+    @property
+    def motorPositions(self):
+        return [centroid["motorPos"] for centroid in self.centroidList]
+
+    @property
     def rad(self):
         return numpy.average([cent["rad"] for cent in self.centroidList], axis=0, weights=self.counts)
 
@@ -127,16 +103,6 @@ class DetectedFiber(object):
     def detectedIn(self, imageFileName):
         return imageFileName in self.imageFiles
 
-
-def multiprocessImage(imageFileList, callFunc, block=False):
-    # may want to try map_async
-    p = Pool(5)
-    if block:
-        output = p.map(processImage, imageFileList)
-        callFunc(output)
-        return None
-    else:
-        return p.map_async(processImage, imageFileList, callback=callFunc)
 
 def sortDetections(brightestCentroidList, plot=False, minCounts=MINCOUNTS, minSep=MINSEP):
     """Reorganize detection list into groups
@@ -192,20 +158,20 @@ def getSortedImages(imageFileDirectory, imgBaseName="img", imgExtension="bmp"):
     imageFilesSorted = [os.path.join(imageFileDirectory, "%s%i.%s"%(imgBaseName, num, imgExtension)) for num in range(1,nImageFiles)]
     return imageFilesSorted
 
-def batchMultiprocess(imageFileDirectory, flatImg, imgBaseName="img", imgExtension="bmp"):
-    """! Process all images in given directory
-    """
-    # detectedFiberList = DetectedFiberList(flatImg)
-    imageFilesSorted = getSortedImages(imageFileDirectory, imgBaseName, imgExtension)
-    frameNumber = frameStartNum
-    tstart = time.time()
-    brightestCentroidList = multiprocessImage(imageFilesSorted)
-    detectedFiberList = sortDetections(brightestCentroidList)
-    totaltime = time.time() - tstart
-    print("total time", totaltime)
-    print(nImageFiles/(totaltime), "frames per second processed")
-    print("sorting detections")
-    return detectedFiberList
+# def batchMultiprocess(imageFileDirectory, flatImg, imgBaseName="img", imgExtension="bmp"):
+#     """! Process all images in given directory
+#     """
+#     # detectedFiberList = DetectedFiberList(flatImg)
+#     imageFilesSorted = getSortedImages(imageFileDirectory, imgBaseName, imgExtension)
+#     frameNumber = frameStartNum
+#     tstart = time.time()
+#     brightestCentroidList = multiprocessImage(imageFilesSorted)
+#     detectedFiberList = sortDetections(brightestCentroidList)
+#     totaltime = time.time() - tstart
+#     print("total time", totaltime)
+#     print(nImageFiles/(totaltime), "frames per second processed")
+#     print("sorting detections")
+#     return detectedFiberList
 
 def convToFits(imageFileDirectory, flatImg, frameStartNum, frameEndNum=None, imgBaseName="img", imgExtension="bmp"):
     saveImage()
@@ -221,27 +187,27 @@ def getImgTimestamps(imageFileDirectory, imgBaseName="img", imgExtension="bmp"):
     return timeStamps
 
 
-if __name__ == "__main__":
-    def callMeWhenDone(brightestCentroidList):
-        detectedFiberList = sortDetections(brightestCentroidList, plot=True)
-        print("Done, found ", len(detectedFiberList), "fibers")
+# if __name__ == "__main__":
+    # def callMeWhenDone(brightestCentroidList):
+    #     detectedFiberList = sortDetections(brightestCentroidList, plot=True)
+    #     print("Done, found ", len(detectedFiberList), "fibers")
 
-    imgDir = "/home/lcomapper/Documents/Camera_test/test061"
-    imgBase = "img"
-    flatImg = None
-    # build the image list (in the correct order, glob doesn't do it correctly)
-    unsortedImgs = glob.glob(os.path.join(imgDir, "img*.bmp"))
-    frameNum = 1
-    sortedImgs = []
-    while True:
-        imgName = os.path.join(imgDir, "img%i.bmp"%frameNum)
-        if imgName in unsortedImgs:
-            sortedImgs.append(imgName)
-            frameNum += 1
-        else:
-            break
-    print("going to process ", len(sortedImgs), " images")
-    block = multiprocessImage(sortedImgs, callMeWhenDone, block=True)
+    # imgDir = "/home/lcomapper/Documents/Camera_test/test061"
+    # imgBase = "img"
+    # flatImg = None
+    # # build the image list (in the correct order, glob doesn't do it correctly)
+    # unsortedImgs = glob.glob(os.path.join(imgDir, "img*.bmp"))
+    # frameNum = 1
+    # sortedImgs = []
+    # while True:
+    #     imgName = os.path.join(imgDir, "img%i.bmp"%frameNum)
+    #     if imgName in unsortedImgs:
+    #         sortedImgs.append(imgName)
+    #         frameNum += 1
+    #     else:
+    #         break
+    # print("going to process ", len(sortedImgs), " images")
+    # block = multiprocessImage(sortedImgs, callMeWhenDone, block=True)
 
     # flatImgList = [os.path.join(imgDir, "%s%i.bmp"%(imgBase, ii)) for ii in range(nImg-7,nImg)]
     # flatImg = createFlat(flatImgList)
