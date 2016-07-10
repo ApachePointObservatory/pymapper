@@ -10,8 +10,15 @@ import time
 import logging
 import traceback
 from multiprocessing import Pool
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import shutil
 
 import scipy.ndimage
+import numpy
+from astropy.io import fits
+
 
 import PyGuide
 
@@ -22,27 +29,126 @@ from twisted.internet import reactor
 
 # EXE = "testFakeWrite.py"
 # BASENAME = "pyTestFile"
-# EXTENSION = "foo"
+# IMGEXTENSION = "foo"
 
 EXE = "AsynchronousGrabWrite"
-BASENAME = "img"
-EXTENSION = "bmp"
+IMGBASENAME = "img"
+IMGEXTENSION = "bmp"
+MINCOUNTS = 0
+MINSEP = 3.5 # min between fibers separation in pixels
 
 CCDInfo = PyGuide.CCDInfo(bias=50, readNoise=10, ccdGain=1)
 # self.imageDir = os.path.join(os.environ["PYMAPPER_DIR"], "tests")
 
-def pickleCentroids(centroidList, imageDir):
+def extractValue(logLine):
+    """Get the float value following the ":" in a line
+    """
+    return float(logLine.split(":")[-1].strip())
+
+def getScanParams(logfile):
+    """Parse the logfile to determine the scan params
+    """
+    outDict = {
+        "speed": None,
+        "start": None,
+        "end": None,
+        "plateID": None,
+    }
+    with open(logfile, "r") as f:
+        logLines = f.readlines()
+    for line in logLines:
+        if "plate ID" in line:
+            outDict["plateID"] = int(extractValue(line))
+        elif "motor start pos" in line:
+            outDict["start"] = extractValue(line)
+        elif "motor end pos" in line:
+            outDict["end"] = extractValue(line)
+        elif "motor scan speed" in line:
+            outDict["speed"] = extractValue(line)
+        if not None in outDict.values():
+            break
+    if None in outDict.values():
+        raise RuntimeError("Could not extract plateID, start, end, and/or speed from logfile")
+    return outDict
+
+def _basePickle(basename, pyobj, scanDir):
     # save detections to picked file
-    fileName = os.path.join(imageDir, "centroidList.pkl")
-    output = open(fileName, "wb")
-    pickle.dump(centroidList, output)
+    filename = os.path.join(scanDir, "%s.pkl"%basename)
+    if os.path.exists(filename):
+        # rename existing pickle file with a timestamp
+        # when it was last modified
+        fTime = time.ctimme(os.path.getmtime(filename))
+        movedfilename = "%s-%s.pkl"%(basename, fTime)
+        shutil.move(filename, movedfilename)
+        logging.info("moving %s to %s"%(filename, movedfilename))
+    output = open(filename, "wb")
+    pickle.dump(pyobj, output)
+    logging.info("dumping to %s"%(filename))
     output.close()
 
-def unpickleCentroids(imageDir):
-   pkl = open(os.path.join(imageDir, "centroidList.pkl"), "rb")
-   centroidList = pickle.load(pkl)
+def _baseUnpickle(basename, scanDir):
+   pkl = open(os.path.join(scanDir, "%s.pkl"%basename), "rb")
+   pyObj = pickle.load(pkl)
    pkl.close()
-   return centroidList
+   return pyObj
+
+def pickleCentroids(centroidList, scanDir):
+    # save detections to picked file
+    return _basePickle("centroidList", centroidList, scanDir)
+
+def unpickleCentroids(scanDir):
+    return _baseUnpickle("centroidList", scanDir)
+
+def pickleDetectionList(detectionList, scanDir):
+    return _basePickle("detectionList", detectionList, scanDir)
+
+def unpickleDetectionlist(scanDir):
+    return _baseUnpickle("detectionList", scanDir)
+
+def frameNumFromName(imgName, imgBase=IMGBASENAME, imgExt=IMGEXTENSION):
+    imgName = os.path.split(imgName)[-1]
+    return int(imgName.split(imgBase)[-1].split(".%s"%imgExt)[0])
+
+def convToFits(imageFileDirectory, flatImg, frameStartNum, frameEndNum=None, imgBaseName=IMGBASENAME, imgExtension=IMGEXTENSION):
+    saveImage()
+
+def saveImage(filename, array2d):
+    if os.path.exists(filename):
+        print("removing previous", filename)
+        os.remove(filename)
+    # median filter the image
+    # array2d = scipy.ndimage.median_filter(array2d, size=1)
+    if filename.endswith(".fits"):
+        _saveFits(filename, array2d)
+    else:
+        _saveJpeg(filename, array2d)
+
+def _saveFits(filename, array2d):
+    hdu = fits.PrimaryHDU(array2d)
+    hdu.writeto(filename)
+
+def _saveJpeg(filename, array2d):
+    scipy.misc.imsave(filename, array2d)
+
+def getImgTimestamps(imageFileDirectory, imgBaseName=IMGBASENAME, imgExtension=IMGEXTENSION):
+    imageFilesSorted = getSortedImages(imageFileDirectory, imgBaseName, imgExtension)
+    timeStamps = []
+    for imgFile in imageFilesSorted:
+        timeStamps.append(os.path.getmtime(imgFile))
+    # normalize first image to have time=0
+    timeStamps = numpy.asarray(timeStamps)
+    timeStamps = timeStamps - timeStamps[0]
+    return timeStamps
+
+def getSortedImages(imageFileDirectory, imgBaseName=IMGBASENAME, imgExtension=IMGEXTENSION):
+    # warning image files are not sorted as expected, even after explicitly sorting
+    # eg 999.jpg > 2000.jpg.  this is bad because image order matters very much
+    # furthermore rather than
+    # note image files are expected to be 1.jpg, 2.jpg, 3.jpg, ..., 354.jpg...
+    imageFiles = glob.glob(os.path.join(imageFileDirectory, "*."+imgExtension))
+    nImageFiles = len(imageFiles)
+    imageFilesSorted = [os.path.join(imageFileDirectory, "%s%i.%s"%(imgBaseName, num, imgExtension)) for num in range(1,nImageFiles)]
+    return imageFilesSorted
 
 class Camera(object):
     def __init__(self, imageDir, motorStart, motorSpeed):
@@ -66,10 +172,10 @@ class Camera(object):
 
     def getAllImgFiles(self):
         # glob doesn't order correctly in
-        return glob.glob(os.path.join(self.imageDir, "*.%s"%EXTENSION))
+        return getSortedImages(self.imageDir)
 
     def getNthFile(self, fileNum):
-        filename = "%s%i.%s"%(BASENAME, fileNum, EXTENSION)
+        filename = "%s%i.%s"%(IMGBASENAME, fileNum, IMGEXTENSION)
         return os.path.join(self.imageDir, filename)
 
     def getUnprocessedFileList(self):
@@ -131,6 +237,11 @@ class Camera(object):
     #     self.centroidList.extend(centroidList)
     #     self.multiprocessImageLoop()
         # reactor.callLater(0., self.multiprocessImageLoop)
+
+    def reprocessImages(self):
+        self.tZero = os.path.getmtime(self.getNthFile(1))
+        allImgFiles = self.getAllImgFiles()
+        self.multiprocessImage(allImgFiles, self.multiprocessDone)
 
     def multiprocessImageLoop(self, centroidList=None):
         # called recursively until all images are (multi!) processed
@@ -194,6 +305,103 @@ class Camera(object):
                         ("rad", rad),
                         ("motorPos", self.motorStart + self.motorSpeed*timestamp)
                     ))
+
+class DetectedFiber(object):
+    def __init__(self, centroidDict):
+        self.centroidList = [centroidDict]
+        # self.centroids = [pyGuideCentroid]
+        # self.imageFiles = [imageFileName]
+
+    @property
+    def imageFiles(self):
+        return [centroid["imageFile"] for centroid in self.centroidList]
+
+    @property
+    def counts(self):
+        return [centroid["counts"] for centroid in self.centroidList]
+
+    @property
+    def xyCtr(self):
+        # return center based on weighted counts
+        return numpy.average([cent["xyCtr"] for cent in self.centroidList], axis=0, weights=self.counts)
+
+    @property
+    def xyCtrs(self):
+        return [centroid["xyCtr"] for centroid in self.centroidList]
+
+    @property
+    def motorPos(self):
+        # return center based on weighted counts
+        return numpy.average([cent["motorPos"] for cent in self.centroidList], axis=0, weights=self.counts)
+
+    @property
+    def motorPositions(self):
+        return [centroid["motorPos"] for centroid in self.centroidList]
+
+    @property
+    def rad(self):
+        return numpy.average([cent["rad"] for cent in self.centroidList], axis=0, weights=self.counts)
+
+    def belongs2me(self, centroidDict, minSep=MINSEP):
+        # if center moves by more than 0.25 pixels
+        # doesn't belong
+        dist = numpy.linalg.norm(numpy.subtract(centroidDict["xyCtr"], self.xyCtr))
+        # if dist < 3:
+        #     print("belongs to", dist, self.imageFiles)
+        return dist < minSep
+        # print("dist!", dist, self.imageFiles)
+        # return dist<(self.rad/2.)
+
+    def add2me(self, centroidDict):
+        self.centroidList.append(centroidDict)
+
+    def detectedIn(self, imageFileName):
+        return imageFileName in self.imageFiles
+
+
+def sortDetections(brightestCentroidList, plot=False, minCounts=MINCOUNTS, minSep=MINSEP):
+    """Reorganize detection list into groups
+    of detections (1 group per fiber)
+    """
+    detectedFibers = []
+    for brightestCentroid in brightestCentroidList:
+        isNewDetection = None
+        crashMe = False
+        if brightestCentroid["counts"] is not None and brightestCentroid["counts"] > MINCOUNTS:
+            isNewDetection = True
+            # search through every previous detection
+            for prevDetection in detectedFibers:
+                if prevDetection.belongs2me(brightestCentroid, minSep):
+                    if isNewDetection == False:
+                        crashMe = True
+                        print("bad bad, crash me!")
+                    # print("previous detection!!!", brightestCentroid.xyCtr)
+                    isNewDetection = False
+                    # print("previous detection", os.path.split(imageFile)[-1], prevDetection.imageFiles)
+                    prevDetection.add2me(brightestCentroid)
+                    # break # assign to the first that works???
+                # was this is a new detection?
+            if isNewDetection:
+                # print('new detection:', os.path.split(imageFile)[-1], brightestCentroid.counts, brightestCentroid.xyCtr)
+                detectedFibers.append(DetectedFiber(brightestCentroid))
+
+        if plot:
+            imageFile = brightestCentroid["imageFile"]
+            color = "r" if isNewDetection else "b"
+            fig = plt.figure(figsize=(10,10));plt.imshow(scipy.ndimage.imread(imageFile), vmin=0, vmax=10)#plt.show(block=False)
+            plt.scatter(0, 0, s=80, facecolors='none', edgecolors='b')
+            if brightestCentroid["xyCtr"] is not None:
+               x,y = brightestCentroid["xyCtr"]
+               plt.scatter(x, y, s=80, facecolors='none', edgecolors=color)
+            frameNumber = int(frameNumFromName(imageFile))
+            zfilled = "%i"%frameNumber
+            zfilled = zfilled.zfill(5)
+            dd = os.path.split(imageFile)[0]
+            nfn = os.path.join(dd, "pyguide%s.png"%zfilled)
+            fig.savefig(nfn); plt.close(fig)    # close the figure
+        # if crashMe:
+        #     raise RuntimeError("Non-unique detection!!!!")
+    return detectedFibers
 
 if __name__ == "__main__":
     camera = Camera()

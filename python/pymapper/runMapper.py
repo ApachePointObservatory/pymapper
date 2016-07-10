@@ -7,21 +7,18 @@ import argparse
 from math import floor
 import os
 import glob
-import pickle
 
 from twisted.internet import reactor
 
 from sdss.utilities.astrodatetime import datetime
 
-from pymapper.imgProcess import sortDetections
-from pymapper.camera import Camera#, unpickleCentroids
-# from pymapper.imgProcess import DetectedFiberList
-from pymapper.motor import MotorController
-from pymapper.fiberAssign import FocalSurfaceSolver
+from .camera import Camera, sortDetections, IMGBASENAME, IMGEXTENSION, getScanParams, pickleDetectionList
+# from .imgProcess import DetectedFiberList
+from .motor import MotorController
+from .fiberAssign import FocalSurfaceSolver
 
 homedir = os.path.expanduser("~")
 baseDir = os.path.join(homedir, "Documents/Camera_test")
-# scandir = os.path.join(homedir, "scan")
 baseName = "test"
 
 
@@ -83,36 +80,82 @@ def pathPlugMapP(plateID):
     platelistdir = os.environ["PLATELIST_DIR"]
     return os.path.join(platelistdir, "plates", plateSubDir, plateZfill, fileName)
 
-def pickleDetectionList(detectionList, scanDir):
-    # save detections to picked file
-    fileName = os.path.join(scanDir, "detectionList.pkl")
-    output = open(fileName, "wb")
-    pickle.dump(detectionList, output)
-    output.close()
 
-def main(argv=None):
-    global baseDir
-    parser = argparse.ArgumentParser(
-        prog=os.path.basename(sys.argv[0]),
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description="Run the plate mapper."
-        )
-    parser.add_argument("plateID", type=int, help="Plate ID")
-    parser.add_argument("--scanDir", required=False, help="""Directory in which to put scan.
-                            If not provided, one will be automatically determined"""
-                            )
-    parser.add_argument("--rootDir", required=False,
-        default=baseDir, help="Root directory, scanDir will be created here.")
-    parser.add_argument("--startPos", required=False, type=float, default=20,
-        help="begin of scan motor position (mm).")
-    parser.add_argument("--endPos", required=False, type=float, default=140,
-        help="end of scan motor position (mm).")
-    parser.add_argument("--scanSpeed", required=False, type=float, default=0.6,
-        help="speed at which motor scans (mm/sec).")
-    parser.add_argument("--makePlots", action="store_true", default=False, help="if present create png plots with circled dectections, takes much longer." )
-    args = parser.parse_args()
-    parser.add_argument("--solve", action="store_true", default=False, help="if present, solve plate matching fibers to holes.")
-    plateID = args.plateID
+def getExistingImgs(scanDir):
+    imgs = glob.glob(os.path.join(scanDir, "%s*.%s"%(IMGBASENAME, IMGEXTENSION)))
+    return imgs
+
+def configureLogging(scanDir, overwrite=True):
+    """if overwrite is true, remove any existing logfile,
+    else append to any existing one
+    """
+    # configure logging
+    logfile = os.path.join(scanDir, "scan.log")
+
+    if os.path.exists(logfile) and overwrite:
+        os.remove(logfile)
+
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG)
+
+    ch = logging.StreamHandler(sys.stdout)
+    ch.setLevel(logging.DEBUG)
+    # formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    # ch.setFormatter(formatter)
+    root.addHandler(ch)
+    return logfile
+
+
+def reprocess(args):
+    # get all relative information
+    # from existing log file
+    if args.scanDir is None:
+        raise RuntimeError("Must specify --scanDir with --reprocess")
+    baseDir = os.path.abspath(args.rootDir)
+    scanDir = os.path.join(baseDir, args.scanDir)
+    if not os.path.exists(scanDir):
+        raise RuntimeError("Scan directory doesn't exist: %s"%scanDir)
+    # verify that images exist
+    imgs = getExistingImgs(scanDir)
+    if not imgs:
+        raise RuntimeError("Scan directory doesn't contain existing imgs, cannot --reprocess!")
+    logfile = configureLogging(scanDir, overwrite=False)
+    logging.info("reprocessing images in %s"%scanDir)
+    # determine previous scan params
+    scanParams = getScanParams(logfile)
+    startPos = scanParams["start"]
+    endPos = scanParams["end"]
+    scanSpeed = scanParams["speed"]
+    # create directory to hold camera images
+    # note all previous images will be removed if image dir is not empty
+    camera = Camera(scanDir, startPos, scanSpeed)
+    def solvePlate():
+        # load the (previously pickled centroid list)
+        logging.info("sorting detections. makePlots=%s"%str(args.makePlots))
+        detectedFiberList = sortDetections(camera.centroidList, plot=args.makePlots)
+        # pickle and save the detection list
+        pickleDetectionList(detectedFiberList, scanDir)
+        logging.info("scan finished.")
+        logging.info("found %i fibers"%len(detectedFiberList))
+        nImages = len(camera.getAllImgFiles)
+        scanTime = abs(endPos - startPos)/float(scanSpeed)
+        fps = nImages / scanTime
+        logging.info("%i images taken, FPS: %.4f"%(nImages, fps))
+        # not yet ready to solve plate:
+
+        # plugMapPath = pathPlugMapP(plateID)
+        # logging.info("plugmap path", plugMapPath)
+        # assert os.path.exists(plugMapPath)
+        # fss = FocalSurfaceSolver(detectedFiberList, plugMapPath)
+    camera.doneProcessingCallback(solvePlate)
+    camera.reprocessImages()
+
+
+def runScan(args):
+    """Move motor, take images, etc
+    """
+    if args.plateID is None:
+        raise RuntimeError("Must specify --plateID")
     baseDir = os.path.abspath(args.rootDir)
         # baseDir doesn't exist
     # verify base directory is ok
@@ -133,12 +176,15 @@ def main(argv=None):
         # no scan dir, try to provide the next one
         # try to determine the next number in the
         # directory sequence
-        testDirs = sorted(glob.glob(os.path.join(baseDir, "%s*"%baseName)))
-        if testDirs:
-            lastTestDir = testDirs[-1]
-            # grab last three chars (they should be ints)
-            lastTestInt = int(lastTestDir[-3:])
-            nextTestInt = lastTestInt + 1
+        imgs = sorted(glob.glob(os.path.join(baseDir, "%s*"%baseName)))
+        imgInts = []
+        for img in imgs:
+            try:
+                imgInts.append(int(img[-3:]))
+            except:
+                pass
+        if imgInts:
+            nextTestInt = max(imgInts)+1
             scanDir = "%s%s"%(baseName, ("%i"%nextTestInt).zfill(3))
         else:
             # no existing test dirs, create the first one?
@@ -152,7 +198,7 @@ def main(argv=None):
     scanDir = os.path.join(baseDir, scanDir)
     if os.path.exists(scanDir):
         # scan dir already exists, check if images have been written here yet?
-        imgs = glob.glob(os.path.join(scanDir, "*.bmp"))
+        imgs = getExistingImgs(scanDir)
         if imgs:
             # images exist ask user what to do
             question = "%i pre-existing images in %s, REMOVE ALL?"%(len(imgs), scanDir)
@@ -172,22 +218,6 @@ def main(argv=None):
             logging.info("failed to create scan directory in %s (permissions?)"%scanDir)
             sys.exit()
 
-    # configure logging
-    logfile = os.path.join(scanDir, "scan.log")
-    if os.path.exists(logfile):
-        os.remove(logfile)
-    logging.basicConfig(filename=logfile, level=logging.DEBUG)
-
-    root = logging.getLogger()
-    root.setLevel(logging.DEBUG)
-
-    ch = logging.StreamHandler(sys.stdout)
-    ch.setLevel(logging.DEBUG)
-    # formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    # ch.setFormatter(formatter)
-    root.addHandler(ch)
-
-
     logging.info("scanDir: %s"%scanDir)
     logging.info("plate ID: %i"%args.plateID)
     logging.info("motor start pos (mm): %.2f"%args.startPos)
@@ -197,7 +227,7 @@ def main(argv=None):
 
     # create directory to hold camera images
     # note all previous images will be removed if image dir is not empty
-    camera = Camera(scanDir)
+    camera = Camera(scanDir, args.startPos, args.scanSpeed)
 
     # setup object that finds and holds detections
     # detectedFiberList = DetectedFiberList()
@@ -262,6 +292,37 @@ def main(argv=None):
  #   detectedFiberList = pickle.load(pkl)
  #   pkl.close()
  #   solvePlate(detectedFiberList)
+
+def main(argv=None):
+    global baseDir
+    parser = argparse.ArgumentParser(
+        prog=os.path.basename(sys.argv[0]),
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description="Run the plate mapper."
+        )
+    parser.add_argument("--plateID", type=int, required=False, help="Plate ID")
+    parser.add_argument("--scanDir", required=False, help="""Directory in which to put scan.
+                            If not provided, one will be automatically determined"""
+                            )
+    parser.add_argument("--rootDir", required=False,
+        default=baseDir, help="Root directory, scanDir will be created here.")
+    parser.add_argument("--startPos", required=False, type=float, default=20,
+        help="begin of scan motor position (mm).")
+    parser.add_argument("--endPos", required=False, type=float, default=140,
+        help="end of scan motor position (mm).")
+    parser.add_argument("--scanSpeed", required=False, type=float, default=0.6,
+        help="speed at which motor scans (mm/sec).")
+    parser.add_argument("--makePlots", action="store_true", default=False, help="if present create png plots with circled dectections, takes much longer." )
+    parser.add_argument("--solve", action="store_true", default=False, help="if present, solve plate matching fibers to holes.")
+    parser.add_argument("--reprocess", action="store_true", default=False, help="if present, reprocess the raw images.")
+    args = parser.parse_args()
+
+    if args.reprocess:
+        reprocess(args)
+    else:
+        runScan(args)
+
+
 
 
 if __name__ == "__main__":

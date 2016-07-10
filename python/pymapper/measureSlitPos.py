@@ -7,7 +7,18 @@ import pickle
 import numpy
 from scipy.interpolate import UnivariateSpline
 
-from pymapper.imgProcess import getImgTimestamps
+from .camera import getImgTimestamps, getFrameNumFromName, getScanParams
+
+def getMeasuredFiberPositions(filename):
+    with open(filename, "r") as f:
+        lines = f.readlines()
+    fiberPosList = []
+    for line in lines:
+        if line.strip().startswith("#"):
+            continue # comment
+        fiberNum, fiberPos = line.strip().split()
+        fiberPosList.append(float(fiberPos))
+    return numpy.asarray(fiberPosList)
 
 class SlitHeadPosition(object):
     def __init__(self, imgTimestamps, start, speed):
@@ -32,34 +43,6 @@ class SlitHeadPosition(object):
         return self.splineInterp(imgNum)
 
 
-def extractValue(logLine):
-    """Get the float value following the ":" in a line
-    """
-    return float(logLine.split(":")[-1].strip())
-
-def getScanParams(logfile):
-    """Parse the logfile to determine the scan params
-    """
-    speed = None
-    start = None
-    end = None
-    with open(logfile, "r") as f:
-        logLines = f.readlines()
-    for line in logLines:
-        if "motor start pos" in line:
-            start = extractValue(line)
-        elif "motor end pos" in line:
-            end = extractValue(line)
-        elif "motor scan speed" in line:
-            speed = extractValue(line)
-        if not None in [start, end, speed]:
-            break
-    if None in [start, end, speed]:
-        raise RuntimeError("Could not extract start, end, and/or speed: (%s, %s, %s)"
-            %(str(start), str(end), str(speed)))
-    return start, end, speed
-
-
 def main(argv=None):
     parser = argparse.ArgumentParser(
         prog=os.path.basename(sys.argv[0]),
@@ -74,7 +57,9 @@ def main(argv=None):
     logfile = os.path.join(scanDir, "scan.log")
     if not os.path.exists(logfile):
         raise RuntimeError("Could not locate scan log: %s"%logfile)
-    start, end, speed = getScanParams(logfile)
+    scanParams = getScanParams(logfile)
+    start = scanParams["start"]
+    speed = scanParams["speed"]
     # get the ordered detections
     detectionListFile = os.path.join(scanDir, "detectionList.pkl")
     if not os.path.exists(detectionListFile):
@@ -93,8 +78,7 @@ def main(argv=None):
         counts = []
         for centroid in detection.centroidList:
             baseDir, imgFile = os.path.split(centroid["imageFile"])
-            # img looks like img<int>.bmp, just get int part
-            imgNums.append(int(imgFile[3:].split(".")[0])) # slice off img
+            imgNums.append(getFrameNumFromName(imgFile))
             counts.append(centroid["counts"])
         weightedCenter = slitHeadPosition(numpy.average(imgNums, weights=counts))
         fiberPositions.append(weightedCenter)

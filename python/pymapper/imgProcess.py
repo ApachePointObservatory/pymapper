@@ -1,7 +1,6 @@
 """Routines for processing images from the lco mapper
 """
 from __future__ import division, absolute_import
-import glob
 import os
 
 import numpy
@@ -10,13 +9,11 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from astropy.io import fits
+
+from .camera import getFrameNumFromName
+
 
 THRESH = 50
-MINCOUNTS = 0
-MINSEP = 3.5 # min between fibers separation in pixels
-
-
 
 def applyThreshold(array2d, thresh):
     # which pixels are greater than sigmaDetect sigma from the mean
@@ -27,23 +24,6 @@ def applyThreshold(array2d, thresh):
 def to2d(array1d, imshape):
     return numpy.reshape(array1d, imshape)
 
-def saveImage(filename, array2d):
-    if os.path.exists(filename):
-        print("removing previous", filename)
-        os.remove(filename)
-    # median filter the image
-    # array2d = scipy.ndimage.median_filter(array2d, size=1)
-    if filename.endswith(".fits"):
-        _saveFits(filename, array2d)
-    else:
-        _saveJpeg(filename, array2d)
-
-def _saveFits(filename, array2d):
-    hdu = fits.PrimaryHDU(array2d)
-    hdu.writeto(filename)
-
-def _saveJpeg(filename, array2d):
-    scipy.misc.imsave(filename, array2d)
 
 def createFlat(imageFileList):
     flatStack = scipy.ndimage.imread(imageFileList[0])
@@ -51,112 +31,7 @@ def createFlat(imageFileList):
         flatStack += scipy.ndimage.imread(imageFile)
     return flatStack / len(imageFileList)
 
-class DetectedFiber(object):
-    def __init__(self, centroidDict):
-        self.centroidList = [centroidDict]
-        # self.centroids = [pyGuideCentroid]
-        # self.imageFiles = [imageFileName]
 
-    @property
-    def imageFiles(self):
-        return [centroid["imageFile"] for centroid in self.centroidList]
-
-    @property
-    def counts(self):
-        return [centroid["counts"] for centroid in self.centroidList]
-
-    @property
-    def xyCtr(self):
-        # return center based on weighted counts
-        return numpy.average([cent["xyCtr"] for cent in self.centroidList], axis=0, weights=self.counts)
-
-    @property
-    def xyCtrs(self):
-        return [centroid["xyCtr"] for centroid in self.centroidList]
-
-    @property
-    def motorPos(self):
-        # return center based on weighted counts
-        return numpy.average([cent["motorPos"] for cent in self.centroidList], axis=0, weights=self.counts)
-
-    @property
-    def motorPositions(self):
-        return [centroid["motorPos"] for centroid in self.centroidList]
-
-    @property
-    def rad(self):
-        return numpy.average([cent["rad"] for cent in self.centroidList], axis=0, weights=self.counts)
-
-    def belongs2me(self, centroidDict, minSep=MINSEP):
-        # if center moves by more than 0.25 pixels
-        # doesn't belong
-        dist = numpy.linalg.norm(numpy.subtract(centroidDict["xyCtr"], self.xyCtr))
-        # if dist < 3:
-        #     print("belongs to", dist, self.imageFiles)
-        return dist < minSep
-        # print("dist!", dist, self.imageFiles)
-        # return dist<(self.rad/2.)
-
-    def add2me(self, centroidDict):
-        self.centroidList.append(centroidDict)
-
-    def detectedIn(self, imageFileName):
-        return imageFileName in self.imageFiles
-
-
-def sortDetections(brightestCentroidList, plot=False, minCounts=MINCOUNTS, minSep=MINSEP):
-    """Reorganize detection list into groups
-    of detections (1 group per fiber)
-    """
-    detectedFibers = []
-    for brightestCentroid in brightestCentroidList:
-        isNewDetection = None
-        crashMe = False
-        if brightestCentroid["counts"] is not None and brightestCentroid["counts"] > MINCOUNTS:
-            isNewDetection = True
-            # search through every previous detection
-            for prevDetection in detectedFibers:
-                if prevDetection.belongs2me(brightestCentroid, minSep):
-                    if isNewDetection == False:
-                        crashMe = True
-                        print("bad bad, crash me!")
-                    # print("previous detection!!!", brightestCentroid.xyCtr)
-                    isNewDetection = False
-                    # print("previous detection", os.path.split(imageFile)[-1], prevDetection.imageFiles)
-                    prevDetection.add2me(brightestCentroid)
-                    # break # assign to the first that works???
-                # was this is a new detection?
-            if isNewDetection:
-                # print('new detection:', os.path.split(imageFile)[-1], brightestCentroid.counts, brightestCentroid.xyCtr)
-                detectedFibers.append(DetectedFiber(brightestCentroid))
-
-        if plot:
-            imageFile = brightestCentroid["imageFile"]
-            color = "r" if isNewDetection else "b"
-            fig = plt.figure(figsize=(10,10));plt.imshow(scipy.ndimage.imread(imageFile), vmin=0, vmax=10)#plt.show(block=False)
-            plt.scatter(0, 0, s=80, facecolors='none', edgecolors='b')
-            if brightestCentroid["xyCtr"] is not None:
-               x,y = brightestCentroid["xyCtr"]
-               plt.scatter(x, y, s=80, facecolors='none', edgecolors=color)
-            frameNumber = int(imageFile.split("img")[-1].split(".")[0])
-            zfilled = "%i"%frameNumber
-            zfilled = zfilled.zfill(5)
-            dd = os.path.split(imageFile)[0]
-            nfn = os.path.join(dd, "pyguide%s.png"%zfilled)
-            fig.savefig(nfn); plt.close(fig)    # close the figure
-        # if crashMe:
-        #     raise RuntimeError("Non-unique detection!!!!")
-    return detectedFibers
-
-def getSortedImages(imageFileDirectory, imgBaseName="img", imgExtension="bmp"):
-    # warning image files are not sorted as expected, even after explicitly sorting
-    # eg 999.jpg > 2000.jpg.  this is bad because image order matters very much
-    # furthermore rather than
-    # note image files are expected to be 1.jpg, 2.jpg, 3.jpg, ..., 354.jpg...
-    imageFiles = glob.glob(os.path.join(imageFileDirectory, "*."+imgExtension))
-    nImageFiles = len(imageFiles)
-    imageFilesSorted = [os.path.join(imageFileDirectory, "%s%i.%s"%(imgBaseName, num, imgExtension)) for num in range(1,nImageFiles)]
-    return imageFilesSorted
 
 # def batchMultiprocess(imageFileDirectory, flatImg, imgBaseName="img", imgExtension="bmp"):
 #     """! Process all images in given directory
@@ -173,18 +48,6 @@ def getSortedImages(imageFileDirectory, imgBaseName="img", imgExtension="bmp"):
 #     print("sorting detections")
 #     return detectedFiberList
 
-def convToFits(imageFileDirectory, flatImg, frameStartNum, frameEndNum=None, imgBaseName="img", imgExtension="bmp"):
-    saveImage()
-
-def getImgTimestamps(imageFileDirectory, imgBaseName="img", imgExtension="bmp"):
-    imageFilesSorted = getSortedImages(imageFileDirectory, imgBaseName, imgExtension)
-    timeStamps = []
-    for imgFile in imageFilesSorted:
-        timeStamps.append(os.path.getmtime(imgFile))
-    # normalize first image to have time=0
-    timeStamps = numpy.asarray(timeStamps)
-    timeStamps = timeStamps - timeStamps[0]
-    return timeStamps
 
 
 # if __name__ == "__main__":

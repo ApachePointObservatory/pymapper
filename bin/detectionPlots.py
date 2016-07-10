@@ -5,8 +5,7 @@ from __future__ import division, absolute_import
 import traceback
 import os
 
-from pymapper.imgProcess import sortDetections
-from pymapper.camera import unpickleCentroids
+from pymapper.camera import unpickleCentroids, sortDectections
 
 MINCOUNTS = 0
 MINSEP = 3.5 # min between fibers separation in pixels

@@ -15,6 +15,7 @@ import glob
 
 import numpy
 from scipy.optimize import fmin
+from scipy.optimize import minimize_scalar
 
 import matplotlib
 matplotlib.use("Agg")
@@ -22,6 +23,8 @@ import matplotlib.pyplot as plt
 
 from sdss.utilities.yanny import yanny
 from fitPlugPlateMeas.fitData import TransRotScaleModel, ModelFit
+
+from .measureSlitPos import getMeasuredFiberPositions
 
 # spacing between blocks (measured empirically), units are adjacent fiber spacing
 # turns out to be better to just use the same spacing for every block...
@@ -33,19 +36,52 @@ DEBUG = False
 FWHMCOARSE = 5 # mm
 FWHMFINE = 0.1 # mm
 MMPERINCH = 25.4 # mm per inch
+MICRONSPERMM = 1000.0
 # plates have 32 inch diameter
 PLATERADIUS = 32 * MMPERINCH / 2.
 # MATCHTHRESHb = 3 #mm (require a match to be within this threshold to be considered robust)
-
+FIBERDIAMETER = 120 * MICRONSPERMM
+SLIT_MATCH_THRESH = FIBERDIAMETER / 2. #mm wiggle room for slit head matching 1/2 of a fiber diameter
 
 class SlitheadSolver(object):
-    def __init__(self, detectedFiberList):
+    def __init__(self, detectedFiberList, fiberslitposFile):
         """List of detections
         """
         self.detectedFiberList = detectedFiberList
         self.totalFiberNum = 300
         self.detectedFiberNum = len(detectedFiberList)
         self.missingFiberNum = self.totalFiberNum - self.detectedFiberNum
+        # load fiber positions on the slit
+        self.measuredFiberPositions = getMeasuredFiberPositions(fiberslitposFile)
+        self.detectedFiberPositions = numpy.asarray([detectedFiber.motorPos for detectedFiber in self.detectedFiberList])
+        # determine best offset along the slit that produces the best match
+        # of slit head positions
+        # idl mapper uses c_correlate function with lag
+        # it also tries a variety of scale.
+        # but I'm ignoring scale for now
+        out = minimize_scalar(self.minimizeShift, bounds=(-0.3,0.3))
+        # apply shift to  to detected fibers
+        print("slit head shift: %0.4f mm"%out.x)
+        self.shiftedFiberPositions = self.detectedFiberPositions+out.x
+        # for each detection determine the fiber number
+        self.fiberNumbers = numpy.ones(len(self.detectedFiberList))*-1
+        for ind, fiberPos in enumerate(self.shiftedFiberPositions):
+            arg = numpy.nonzero(numpy.abs(fiberPos-self.measuredFiberPositions)<SLIT_MATCH_THRESH)
+            if len(ind) != 1:
+                print("Couldn't match detection %i to a fiber on the slit"%ind+1)
+            self.fiberNumbers[ind] = arg[0]+1 # zero indexing
+        # any unmatched fibers will have -1 as a fiber number
+
+    def minimizeShift(self, shift):
+        """Function to be minimized
+        """
+        shiftedDetections = self.detectedFiberPositions[:] + shift
+        ss = 0
+        for val in self.measuredFiberPositions:
+            ss += numpy.sum((val-shiftedDetections)**2)
+        return ss
+
+
 
 class PlPlugMap(object):
     def __init__(self, plPlugMapFile):
@@ -331,9 +367,6 @@ class FocalSurfaceSolver(object):
         # plt.figure()
         # plt.hist(err, bins=100)
         # plt.show(block=True)
-
-def frameNumFromName(imgName, imgBase="img", imgExt="bmp"):
-    return int(imgName.split(imgBase)[-1].split(".%s"%imgExt)[0])
 
 if __name__ == "__main__":
     import pickle
