@@ -11,7 +11,7 @@ import logging
 import traceback
 from multiprocessing import Pool
 import matplotlib
-matplotlib.use("Agg")
+# matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import shutil
 
@@ -37,7 +37,8 @@ IMGEXTENSION = "bmp"
 MINCOUNTS = 0
 MINSEP = 3.5 # min between fibers separation in pixels
 
-CCDInfo = PyGuide.CCDInfo(bias=50, readNoise=10, ccdGain=1)
+# CCDInfo = PyGuide.CCDInfo(bias=50, readNoise=10, ccdGain=1)
+CCDInfo = PyGuide.CCDInfo(bias=1, readNoise=0, ccdGain=1)
 # self.imageDir = os.path.join(os.environ["PYMAPPER_DIR"], "tests")
 
 def extractValue(logLine):
@@ -77,7 +78,7 @@ def _basePickle(basename, pyobj, scanDir):
     if os.path.exists(filename):
         # rename existing pickle file with a timestamp
         # when it was last modified
-        fTime = time.ctimme(os.path.getmtime(filename))
+        fTime = time.ctime(os.path.getmtime(filename))
         movedfilename = "%s-%s.pkl"%(basename, fTime)
         shutil.move(filename, movedfilename)
         logging.info("moving %s to %s"%(filename, movedfilename))
@@ -102,7 +103,7 @@ def unpickleCentroids(scanDir):
 def pickleDetectionList(detectionList, scanDir):
     return _basePickle("detectionList", detectionList, scanDir)
 
-def unpickleDetectionlist(scanDir):
+def unpickleDetectionList(scanDir):
     return _baseUnpickle("detectionList", scanDir)
 
 def frameNumFromName(imgName, imgBase=IMGBASENAME, imgExt=IMGEXTENSION):
@@ -238,10 +239,12 @@ class Camera(object):
     #     self.multiprocessImageLoop()
         # reactor.callLater(0., self.multiprocessImageLoop)
 
+
     def reprocessImages(self):
         self.tZero = os.path.getmtime(self.getNthFile(1))
         allImgFiles = self.getAllImgFiles()
-        self.multiprocessImage(allImgFiles, self.multiprocessDone)
+        self.centroidList = self.multiprocessImage(allImgFiles, callFunc=None, block=True)
+        self.multiprocessDone()
 
     def multiprocessImageLoop(self, centroidList=None):
         # called recursively until all images are (multi!) processed
@@ -280,6 +283,7 @@ class Camera(object):
         """! Process a single image
 
         @param[in] imageFile. String
+        @param[in] fScanFrame: an FScanFrame obj
 
         """
         # print("processing img: ", os.path.split(imageFile)[-1])
@@ -304,6 +308,68 @@ class Camera(object):
                         ("xyCtr", xyCtr),
                         ("rad", rad),
                         ("motorPos", self.motorStart + self.motorSpeed*timestamp)
+                    ))
+
+class FScanCamera(Camera):
+    """For testing with existing idlmapper fcan files
+    """
+    def __init__(self, imageDir, scanMovie):
+        """@param[in] scanMovie a ScanMovie Obj
+        """
+        self.imageDir = imageDir
+        self.scanMovie = scanMovie
+
+
+    def reprocessImages(self):
+        self.centroidList = self.multiprocessImage(self.scanMovie.frames, callFunc=None, block=True)
+        pickleCentroids(self.centroidList, self.imageDir)
+
+    def multiprocessImage(self, fScanFrames, callFunc, block=False):
+        # may want to try map_async
+        p = Pool(2)
+        if block:
+            output = p.map(self.processImage, fScanFrames)
+            return output
+        else:
+            return p.map_async(self.processImage, fScanFrames, callback=callFunc)
+
+    def processImage(self, fScanFrame):
+        """! Process a single image
+
+        @param[in] fScanFrame: an FScanFrame obj
+
+        """
+        # print("processing img: ", os.path.split(imageFile)[-1])
+        if fScanFrame.frame % 100 == 0:
+            print("frame %i   %.2f done"%(fScanFrame.frame, float(fScanFrame.frame+1)/float(len(self.scanMovie.frames))*100))
+        imgData = fScanFrame.getImg()
+        if fScanFrame.frame > 0:
+            imgData = imgData - self.scanMovie.frames[fScanFrame.frame-1].getImg()#/ self.scanMovie.flatFile
+        imageFile = "%i.fscanframe"%fScanFrame.frame
+        motorPos = fScanFrame.motorpos
+        counts = None
+        xyCtr = None
+        rad = None
+        # k = numpy.array([[.1,.1,.1],[.1,1,.1],[.1,.25,.1]])
+        # imgData = scipy.ndimage.convolve(imgData, k)
+        # imgData = scipy.ndimage.filters.median_filter(imgData, 3)
+        try:
+            pyGuideCentroids = PyGuide.findStars(imgData, None, None, CCDInfo)[0]
+            # did we get any centroids?
+            if pyGuideCentroids:
+                counts = pyGuideCentroids[0].counts
+                xyCtr = pyGuideCentroids[0].xyCtr
+                rad = pyGuideCentroids[0].rad
+        except Exception:
+            print("some issue with pyguide on img (skipping): ", imageFile)
+            traceback.print_exc()
+        return dict((
+                        ("imageFile", imageFile),
+                        ("counts", counts),
+                        ("xyCtr", xyCtr),
+                        ("rad", rad),
+                        ("motorPos", motorPos),
+                        ("frame", fScanFrame.frame),
                     ))
 
 class DetectedFiber(object):
@@ -374,7 +440,7 @@ def sortDetections(brightestCentroidList, plot=False, minCounts=MINCOUNTS, minSe
                 if prevDetection.belongs2me(brightestCentroid, minSep):
                     if isNewDetection == False:
                         crashMe = True
-                        print("bad bad, crash me!")
+                        logging.warn("bad bad, crash me! in %s"%brightestCentroid["imageFile"])
                     # print("previous detection!!!", brightestCentroid.xyCtr)
                     isNewDetection = False
                     # print("previous detection", os.path.split(imageFile)[-1], prevDetection.imageFiles)

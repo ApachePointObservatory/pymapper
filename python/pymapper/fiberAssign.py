@@ -12,6 +12,7 @@ from __future__ import division, absolute_import
 import os
 import itertools
 import glob
+import logging
 
 import numpy
 from scipy.optimize import fmin
@@ -61,14 +62,14 @@ class SlitheadSolver(object):
         # but I'm ignoring scale for now
         out = minimize_scalar(self.minimizeShift, bounds=(-0.3,0.3))
         # apply shift to  to detected fibers
-        print("slit head shift: %0.4f mm"%out.x)
+        logging.info("slit head shift: %0.4f mm"%out.x)
         self.shiftedFiberPositions = self.detectedFiberPositions+out.x
         # for each detection determine the fiber number
         self.fiberNumbers = numpy.ones(len(self.detectedFiberList))*-1
         for ind, fiberPos in enumerate(self.shiftedFiberPositions):
             arg = numpy.nonzero(numpy.abs(fiberPos-self.measuredFiberPositions)<SLIT_MATCH_THRESH)
             if len(ind) != 1:
-                print("Couldn't match detection %i to a fiber on the slit"%ind+1)
+                logging.info("Couldn't match detection %i to a fiber on the slit"%ind+1)
             self.fiberNumbers[ind] = arg[0]+1 # zero indexing
         # any unmatched fibers will have -1 as a fiber number
 

@@ -7,6 +7,8 @@ import argparse
 from math import floor
 import os
 import glob
+import sys
+import logging
 
 from twisted.internet import reactor
 
@@ -15,15 +17,13 @@ from sdss.utilities.astrodatetime import datetime
 from .camera import Camera, sortDetections, IMGBASENAME, IMGEXTENSION, getScanParams, pickleDetectionList
 # from .imgProcess import DetectedFiberList
 from .motor import MotorController
-from .fiberAssign import FocalSurfaceSolver
+from .fiberAssign import SlitheadSolver, FocalSurfaceSolver
 
 homedir = os.path.expanduser("~")
 baseDir = os.path.join(homedir, "Documents/Camera_test")
 baseName = "test"
+fiberslitposfile = os.path.join(os.getenv("PYMAPPER_DIR"), "etc", "fiberpos.dat")
 
-
-import sys
-import logging
 
 """
 todo: add re-detect/re-solve options
@@ -142,6 +142,8 @@ def reprocess(args):
         fps = nImages / scanTime
         logging.info("%i images taken, FPS: %.4f"%(nImages, fps))
         # not yet ready to solve plate:
+        logging.info("correlating fiber positions on slit")
+        ss = SlitheadSolver(detectedFiberList, fiberslitposfile)
 
         # plugMapPath = pathPlugMapP(plateID)
         # logging.info("plugmap path", plugMapPath)
@@ -270,6 +272,7 @@ def runScan(args):
         scanTime = abs(args.endPos - args.startPos)/float(args.scanSpeed)
         fps = nImages / scanTime
         logging.info("%i images taken, FPS: %.4f"%(nImages, fps))
+        ss = SlitheadSolver(detectedFiberList, fiberslitposfile)
         # not yet ready to solve plate:
 
         # plugMapPath = pathPlugMapP(plateID)
