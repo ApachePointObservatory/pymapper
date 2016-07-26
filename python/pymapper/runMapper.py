@@ -143,12 +143,13 @@ def reprocess(args):
         logging.info("%i images taken, FPS: %.4f"%(nImages, fps))
         # not yet ready to solve plate:
         logging.info("correlating fiber positions on slit")
-        ss = SlitheadSolver(detectedFiberList, fiberslitposfile)
-
-        # plugMapPath = pathPlugMapP(plateID)
-        # logging.info("plugmap path", plugMapPath)
-        # assert os.path.exists(plugMapPath)
-        # fss = FocalSurfaceSolver(detectedFiberList, plugMapPath)
+        shs = SlitheadSolver(detectedFiberList)
+        shs.getOffsetAndScale()
+        shs.matchDetections()
+        plugMapPath = pathPlugMapP(args.plateID)
+        logging.info("plugmap path", plugMapPath)
+        assert os.path.exists(plugMapPath)
+        fss = FocalSurfaceSolver(detectedFiberList, plugMapPath)
     camera.doneProcessingCallback(solvePlate)
     camera.reprocessImages()
 
@@ -272,13 +273,15 @@ def runScan(args):
         scanTime = abs(args.endPos - args.startPos)/float(args.scanSpeed)
         fps = nImages / scanTime
         logging.info("%i images taken, FPS: %.4f"%(nImages, fps))
-        ss = SlitheadSolver(detectedFiberList, fiberslitposfile)
+        shs = SlitheadSolver(detectedFiberList)
+        shs.getOffsetAndScale()
+        shs.matchDetections()
         # not yet ready to solve plate:
 
-        # plugMapPath = pathPlugMapP(plateID)
-        # logging.info("plugmap path", plugMapPath)
-        # assert os.path.exists(plugMapPath)
-        # fss = FocalSurfaceSolver(detectedFiberList, plugMapPath)
+        plugMapPath = pathPlugMapP(args.plateID)
+        logging.info("plugmap path", plugMapPath)
+        assert os.path.exists(plugMapPath)
+        fss = FocalSurfaceSolver(detectedFiberList, plugMapPath)
 
     camera.doneProcessingCallback(solvePlate)
 

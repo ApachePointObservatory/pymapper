@@ -11,7 +11,7 @@ import logging
 import traceback
 from multiprocessing import Pool
 import matplotlib
-# matplotlib.use("Agg")
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import shutil
 
@@ -498,6 +498,28 @@ def sortDetections(brightestCentroidList, plot=False, minCounts=MINCOUNTS, minSe
         # if crashMe:
         #     raise RuntimeError("Non-unique detection!!!!")
     return detectedFibers
+
+def plotDetectionsVsSlitPos(detectionList, dir):
+    fig = plt.figure(figsize=(10,10))
+    countsList = []
+    rawMotorPos = []
+    for detection in detectionList:
+        for centroid in detection.centroidList:
+            countsList.append(centroid["counts"])
+            rawMotorPos.append(centroid["motorPos"])
+    detectionCounts = []
+    detectionMotorPos = []
+    nFrameList = []
+    for detection in detectionList:
+        nFrames = len(detection.imageFiles)
+        nFrameList.append(nFrames)
+        middleFrame = nFrames // 2
+        detectionCounts.append(detection.counts[middleFrame]+15000)
+        detectionMotorPos.append(detection.motorPos)
+    plt.plot(rawMotorPos, countsList)
+    plt.plot(detectionMotorPos, detectionCounts, 'or')
+    nfn = os.path.join(dir, "detectionsVsSlitPos.png")
+    fig.savefig(nfn); plt.close(fig)
 
 if __name__ == "__main__":
     camera = Camera()
