@@ -309,9 +309,9 @@ def main(argv=None):
                             )
     parser.add_argument("--rootDir", required=False,
         default=baseDir, help="Root directory, scanDir will be created here.")
-    parser.add_argument("--startPos", required=False, type=float, default=20,
+    parser.add_argument("--startPos", required=False, type=float, default=24,
         help="begin of scan motor position (mm).")
-    parser.add_argument("--endPos", required=False, type=float, default=140,
+    parser.add_argument("--endPos", required=False, type=float, default=134,
         help="end of scan motor position (mm).")
     parser.add_argument("--scanSpeed", required=False, type=float, default=0.6,
         help="speed at which motor scans (mm/sec).")

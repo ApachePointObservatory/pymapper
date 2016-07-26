@@ -7,7 +7,7 @@ import pickle
 import numpy
 from scipy.interpolate import UnivariateSpline
 
-from .camera import getImgTimestamps, getFrameNumFromName, getScanParams
+from .camera import getImgTimestamps, frameNumFromName, getScanParams
 
 def getMeasuredFiberPositions(filename):
     with open(filename, "r") as f:
@@ -78,7 +78,7 @@ def main(argv=None):
         counts = []
         for centroid in detection.centroidList:
             baseDir, imgFile = os.path.split(centroid["imageFile"])
-            imgNums.append(getFrameNumFromName(imgFile))
+            imgNums.append(frameNumFromName(imgFile))
             counts.append(centroid["counts"])
         weightedCenter = slitHeadPosition(numpy.average(imgNums, weights=counts))
         fiberPositions.append(weightedCenter)

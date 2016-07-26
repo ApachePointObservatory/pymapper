@@ -24,6 +24,36 @@ import PyGuide
 
 from twisted.internet import reactor
 
+# how to deal with hot pixels?
+"""
+from IDL:
+   ; Search for hot pixels, and subtract the median value (plus some
+   ; multiple of the dispersion of that value) from those pixels
+   ; A pixel is hot if it's detected in >5% of the timesteps
+   nframetot = n_elements(uniq(sdat.frame))
+   xypix = sdat.col * fscanRows + sdat.row
+   isort = sort(xypix)
+   iuniq = uniq(xypix[isort])
+   nuniq = n_elements(iuniq)
+   i0 = [0,iuniq[0:nuniq-1]+1]
+   num = iuniq - i0 + 1
+   ihot = where(num GT 0.05*nframetot, nhot)
+   for i=0L, nhot-1L do begin
+      thisxy = xypix[isort[i0[ihot[i]]]]
+      thisindx = isort[i0[ihot[i]]:iuniq[ihot[i]]]
+      djs_iterstat, sdat[thisindx].flux, sigrej=3, $
+       median=thismed, sigma=thissig
+      hotval = thismed + 3*thissig + 5
+      sdat[thisindx].flux = (sdat[thisindx].flux - hotval) > 0
+      splog, 'Hot pixel at X,Y=', thisxy/fscanRows, thisxy MOD fscanRows, $
+       ' val=', hotval
+   endfor
+
+   ; Invert camera image if need be
+   sdat.col *= camparam.xpixfac
+
+"""
+
 # from pymapper.imgProcess import multiprocessImage
 # how to ensure that the image program is killed?
 
@@ -152,7 +182,7 @@ def getSortedImages(imageFileDirectory, imgBaseName=IMGBASENAME, imgExtension=IM
     return imageFilesSorted
 
 class Camera(object):
-    def __init__(self, imageDir, motorStart, motorSpeed):
+    def __init__(self, imageDir, motorStart, motorSpeed, ramDisk=False):
         self.motorStart = motorStart
         self.motorSpeed = motorSpeed
         self.tZero = None # timestamp of the first image
@@ -343,8 +373,8 @@ class FScanCamera(Camera):
         if fScanFrame.frame % 100 == 0:
             print("frame %i   %.2f done"%(fScanFrame.frame, float(fScanFrame.frame+1)/float(len(self.scanMovie.frames))*100))
         imgData = fScanFrame.getImg()
-        if fScanFrame.frame > 0:
-            imgData = imgData - self.scanMovie.frames[fScanFrame.frame-1].getImg()#/ self.scanMovie.flatFile
+        # if fScanFrame.frame > 0:
+        #     imgData = imgData - self.scanMovie.frames[fScanFrame.frame-1].getImg()#/ self.scanMovie.flatFile
         imageFile = "%i.fscanframe"%fScanFrame.frame
         motorPos = fScanFrame.motorpos
         counts = None

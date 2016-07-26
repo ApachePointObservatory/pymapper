@@ -12,6 +12,7 @@ import logging
 from astropy.io import fits
 
 from pymapper.camera import FScanCamera, pickleDetectionList, unpickleDetectionList, MINCOUNTS, MINSEP, DetectedFiber, unpickleCentroids
+from pymapper.fiberAssign import SlitheadSolver, FocalSurfaceSolver
 
 # from sdss.utilities.yanny import yanny
 
@@ -33,7 +34,7 @@ class FScanFrame(object):
         else:
             self.flatImg = numpy.ones((960,960))*5
         self.motor = motor
-        self.motorpos = motorpos
+        self.motorpos = motorpos / 34.2857 + 40.44 # scale factor from APO motor steps to mm
         self.tstamp = tstamp
         self.rows = [row]
         self.cols = [col]
@@ -53,17 +54,27 @@ class FScanFrame(object):
     def getImg(self):
         """Return a 2D image of this frame
         Add fluxes from specfic pixels to the flat image
+
+        from IDL:
+       ; New camera installed 02-Jul-2009; scalex=-0.754, scaley=-0.752 mm/pix
+       camparam_new = $
+        {scalex: [-0.78,-0.72,0.005], $ ; range of X scales
+         xpixfac: -1.0              , $ ; factor for xpix (invert X axis)
+         nmotor: 65000L             , $ ; max motor steps + buffer for x-correlation
+         msigma: 18.                  } ; Gaussian width of spot in motor steps
+
         """
         imgData = copy.deepcopy(self.flatImg) + numpy.random.standard_normal((960,960))
         for row, col, flux in itertools.izip(self.rows, self.cols, self.fluxes):
-            imgData[col, row] += flux
-        if self.frame in [3939]:
-            hdu = fits.PrimaryHDU(imgData)
-            hdulist = fits.HDUList([hdu])
-            filename = "fits%i.fits"%self.frame
-            if os.path.exists(filename):
-                os.remove(filename)
-            hdulist.writeto(filename)
+            # imgData[col*-1, row] += flux
+            imgData[row, col] += flux
+        # if self.frame in [3939]:
+        #     hdu = fits.PrimaryHDU(imgData)
+        #     hdulist = fits.HDUList([hdu])
+        #     filename = "fits%i.fits"%self.frame
+        #     if os.path.exists(filename):
+        #         os.remove(filename)
+        #     hdulist.writeto(filename)
         return imgData
 
 class ScanMovie(object):
@@ -81,18 +92,18 @@ class ScanMovie(object):
             self.flatImg = numpy.ones((960,960))*5
 
         self.frames = self.framesFromFile(fscanFile)
-        self._flatFile = None
+        # self._flatFile = None
 
 
-    @property
-    def flatFile(self):
-        if self._flatFile is None:
-            flatFile = numpy.zeros((960,960))
-            for ii, bias in enumerate(self.frames[200:400]):
-                flatFile = flatFile + bias.getImg()
-            flatFile / float(ii+1)
-            self._flatFile = flatFile
-        return self._flatFile
+    # @property
+    # def flatFile(self):
+    #     if self._flatFile is None:
+    #         flatFile = numpy.zeros((960,960))
+    #         for ii, bias in enumerate(self.frames[200:400]):
+    #             flatFile = flatFile + bias.getImg()
+    #         flatFile / float(ii+1)
+    #         self._flatFile = flatFile
+    #     return self._flatFile
 
     def parseLine(self, line):
         """Parse a single line beginning with SCANPIX
@@ -119,9 +130,9 @@ class ScanMovie(object):
             if motor == 3:
                 break # don't continue reading lines
             # only want motor == 2 (apogee motor)
-            if frame > 700:
-            #     # print("coninuing", frame, motor)
-                break
+            # if frame > 700:
+            # #     # print("coninuing", frame, motor)
+            #     break
             if currentFrame is None:
                 # first frame
                 currentFrameNum = frame
@@ -191,16 +202,18 @@ if __name__ == "__main__":
     testDir = os.path.join(pyMapperDir, "tests/data/")
     fscanFile = os.path.join(testDir, "8637/fiberScan-8637-57534-01.par")
     flatFile = os.path.join(testDir, "flat.bmp")
+    plPlugMapFile = os.path.join(testDir, "8637", "plPlugMapM-8637-57534-01.par")
     sm = ScanMovie(testDir, fscanFile, flatImgFile=None)
     fsc = FScanCamera(testDir, sm)
-    fsc.reprocessImages()
+    # fsc.reprocessImages()
     fsc.frames = sm.frames
-    detectedFiberList = sortDetections(fsc, plot=True)
+    # detectedFiberList = sortDetections(fsc, plot=False)
         # pickle and save the detection list
-    pickleDetectionList(detectedFiberList, testDir)
-    # plt.imshow(sm.frames[0].getImg())
+    # pickleDetectionList(detectedFiberList, testDir)
+    plt.imshow(sm.frames[0].getImg())
     # plt.show()
     rawfluxes = []
+    rawMotorPos = []
     countsList = []
     centroidList = unpickleCentroids(testDir)
     detectionList = unpickleDetectionList(testDir)
@@ -212,8 +225,10 @@ if __name__ == "__main__":
             counts = rawflux
         rawfluxes.append(rawflux)
         countsList.append(counts)
+        rawMotorPos.append(frame.motorpos)
     imgNums = []
     detectionCounts = []
+    detectionMotorPos = []
     nFrameList = []
     for detection in detectionList:
         nFrames = len(detection.imageFiles)
@@ -222,11 +237,20 @@ if __name__ == "__main__":
         middleFrame = nFrames // 2
         detectionCounts.append(detection.counts[middleFrame]+15000)
         imgNums.append(frameInts[middleFrame])
+        detectionMotorPos.append(detection.motorPos)
 
-    plt.plot(range(len(countsList)), countsList, '+r')
-    plt.plot(range(len(rawfluxes)), rawfluxes)
-    plt.plot(imgNums, detectionCounts, 'or')
+    # plt.plot(range(len(countsList)), countsList, '+r') #countsList ~ frames not mm so doesn't scale right anymore
+    # plt.plot(range(len(rawfluxes)), rawfluxes)
+    plt.plot(rawMotorPos, rawfluxes)
+    plt.plot(detectionMotorPos, detectionCounts, 'or')
     print(len(detectionList), "detections")
+
+    # next determine slithead solution:
+    APOfiberpos = os.path.join(os.getenv("PYMAPPER_DIR"), "etc", "fiberslitposAPO.par")
+    shs = SlitheadSolver(detectionList, APOfiberpos)
+    shs.getOffsetAndScale()
+    shs.matchDetections()
+    fss = FocalSurfaceSolver(detectionList, plPlugMapFile)
     # centroidList = unpickleCentroids(testDir)
     # fluxes = []
     # fig = plt.figure()

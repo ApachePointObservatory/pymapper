@@ -17,6 +17,7 @@ import logging
 import numpy
 from scipy.optimize import fmin
 from scipy.optimize import minimize_scalar
+import scipy.optimize
 
 import matplotlib
 matplotlib.use("Agg")
@@ -25,7 +26,7 @@ import matplotlib.pyplot as plt
 from sdss.utilities.yanny import yanny
 from fitPlugPlateMeas.fitData import TransRotScaleModel, ModelFit
 
-from .measureSlitPos import getMeasuredFiberPositions
+# from .measureSlitPos import getMeasuredFiberPositions
 
 # spacing between blocks (measured empirically), units are adjacent fiber spacing
 # turns out to be better to just use the same spacing for every block...
@@ -41,46 +42,120 @@ MICRONSPERMM = 1000.0
 # plates have 32 inch diameter
 PLATERADIUS = 32 * MMPERINCH / 2.
 # MATCHTHRESHb = 3 #mm (require a match to be within this threshold to be considered robust)
-FIBERDIAMETER = 120 * MICRONSPERMM
+FIBERDIAMETER = 120 / MICRONSPERMM
 SLIT_MATCH_THRESH = FIBERDIAMETER / 2. #mm wiggle room for slit head matching 1/2 of a fiber diameter
+INTER_SLIT_FIBERCENTER_DIST = 350 / MICRONSPERMM
+INTER_BLOCK_FIBERCETNER_DIST = 0.5 #mm
 
 class SlitheadSolver(object):
-    def __init__(self, detectedFiberList, fiberslitposFile):
+    def __init__(self, detectedFiberList, fiberslitposFile=None):
         """List of detections
         """
+        if fiberslitposFile is None:
+            fiberslitposFile = os.path.join(os.getenv("PYMAPPER_DIR"), "etc", "fiberslitpos.dat")
         self.detectedFiberList = detectedFiberList
-        self.totalFiberNum = 300
-        self.detectedFiberNum = len(detectedFiberList)
-        self.missingFiberNum = self.totalFiberNum - self.detectedFiberNum
-        # load fiber positions on the slit
-        self.measuredFiberPositions = getMeasuredFiberPositions(fiberslitposFile)
-        self.detectedFiberPositions = numpy.asarray([detectedFiber.motorPos for detectedFiber in self.detectedFiberList])
-        # determine best offset along the slit that produces the best match
-        # of slit head positions
-        # idl mapper uses c_correlate function with lag
-        # it also tries a variety of scale.
-        # but I'm ignoring scale for now
-        out = minimize_scalar(self.minimizeShift, bounds=(-0.3,0.3))
-        # apply shift to  to detected fibers
-        logging.info("slit head shift: %0.4f mm"%out.x)
-        self.shiftedFiberPositions = self.detectedFiberPositions+out.x
-        # for each detection determine the fiber number
-        self.fiberNumbers = numpy.ones(len(self.detectedFiberList))*-1
-        for ind, fiberPos in enumerate(self.shiftedFiberPositions):
-            arg = numpy.nonzero(numpy.abs(fiberPos-self.measuredFiberPositions)<SLIT_MATCH_THRESH)
-            if len(ind) != 1:
-                logging.info("Couldn't match detection %i to a fiber on the slit"%ind+1)
-            self.fiberNumbers[ind] = arg[0]+1 # zero indexing
-        # any unmatched fibers will have -1 as a fiber number
+        self.nomFiberNum, self.nomMotorPos = self.parseFiberPosFile(fiberslitposFile)
+        self.detMotorPos, self.detCounts = self.generateDetectionTrace()
 
-    def minimizeShift(self, shift):
-        """Function to be minimized
+    def parseFiberPosFile(self, fiberslitposFile):
+        fiberNums = []
+        motorPositions = []
+        with open(fiberslitposFile, "r") as f:
+            filelines = f.readlines()
+        for line in filelines:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            fiberNum, motorPos = line.split()
+            fiberNums.append(int(fiberNum))
+            motorPositions.append(float(motorPos))
+        return fiberNums, motorPositions
+
+    def generateDetectionTrace(self):
+        detMotorPos = []
+        detCounts = []
+        for detection in self.detectedFiberList:
+            detMotorPos += detection.motorPositions
+            detCounts += detection.counts
+        return detMotorPos, detCounts
+
+    def fluxFromMotorPos(self, motorPos, motorCounts, offset=0, scale=1):
+        """Return expected power from a motorPosition based on
+        the measured positions on the slit
+        model as a gaussain at each measured fiber position on the slit
         """
-        shiftedDetections = self.detectedFiberPositions[:] + shift
-        ss = 0
-        for val in self.measuredFiberPositions:
-            ss += numpy.sum((val-shiftedDetections)**2)
-        return ss
+        # find the nearest motor pos
+        motorPosLookup = numpy.asarray(self.nomMotorPos)*scale + offset
+        minDist = numpy.abs(numpy.min(motorPosLookup - motorPos))
+        # print("minDist", minDist)
+        # thats the minimum distance to the nearest gaussian (or expected position)
+        return motorCounts * numpy.exp(-1*(minDist)**2/float(2*FIBERDIAMETER**2))
+
+    def computeEnergy(self, x):
+        """x[0] is offset x[1] is scale
+        """
+        offset = x[0]
+        scale = x[1]
+        totalEnergy = 0
+        for motorPos, motorCounts in itertools.izip(self.detMotorPos, self.detCounts):
+            totalEnergy += self.fluxFromMotorPos(motorPos, motorCounts, offset, scale)
+        return -1 * totalEnergy
+
+    def getOffsetAndScale(self):
+              # from IDL:
+              # scale_best = 0
+              # shift_best = 0
+              # for scale=1-0.002, 1+0.002, 0.0005 do begin
+              #    yvec1 = maptimes(mcen1*scale, camparam.msigma, motorvec=motorvec)
+              #    cc = c_correlate(yvec1, fluxvec1, lags)
+              #    cmax = max(cc, imax)
+              #    if (cmax GT cc_best) then begin
+              #       cc_best = cmax
+              #       scale_best = scale
+              #       shift_best = lags[imax]
+        bestScale = None
+        bestOffset = None
+        bestEnergy = None
+        scales = numpy.arange(1-0.002, 1+0.002, 0.0005)
+        offsets = numpy.arange(-2,2,FIBERDIAMETER/4.)
+        print("max offset:", offsets[-1])
+        # offsets = numpy.arange(-FIBERDIAMETER/2., FIBERDIAMETER/2., FIBERDIAMETER/100.)
+        for scale in scales:
+            print("scale", scale)
+            for offset in offsets:
+                energy = self.computeEnergy([offset, scale])
+                if bestEnergy is None or energy < bestEnergy:
+                    bestEnergy = energy
+                    bestScale = scale
+                    bestOffset = offset
+        # xInit = [0, 1]
+        # # get the "modeled" flux for each detected motor position
+        # modeledCounts = numpy.asarray([self.fluxFromMotorPos(mp, counts) for mp, counts in itertools.izip(self.detMotorPos, self.detCounts)])
+        self.offset = bestOffset
+        self.scale = bestScale
+
+    def matchDetections(self):
+        # scale the measured motor positions of by the scaling
+        nomMatchPos = numpy.asarray(self.nomMotorPos)*self.scale + self.offset
+        measMatchPos = [detectedFiber.motorPos for detectedFiber in self.detectedFiberList]
+        inds = []
+        errs = []
+        for measMotorPos in measMatchPos:
+            # for each measured position find the closest match
+            # to a nominal fiber (after scale and offset have been applied)
+            # it is assued that the measured positions should be
+            # very close to only one of the nominal positions
+            allErrs = numpy.abs(measMotorPos-nomMatchPos)
+            minInd = numpy.argmin(allErrs)
+            err = allErrs[minInd]
+            errs.append(err)
+            assert minInd not in inds # can have on fiber match twice
+            inds.append(minInd)
+        self.matchInds = inds
+        self.missingFibers = sorted([fiber+1 for fiber in set(range(300))-set(self.matchInds)])
+        # next calculate the RMS from all errors
+        self.rms = numpy.sqrt(numpy.sum(numpy.asarray(errs)**2) / len(errs)) # rms err in mm
+
 
 
 
@@ -120,7 +195,7 @@ class PlPlugMap(object):
         scanNum = len(nExisting) + 1
         scanNumStr = ("%i"%scanNum).zfill(2)
         # construct the new file name, will not overwrite any existing (scanNumStr is incremented)
-        filename = "plPlugMapM-%i-%i-%s.par"%(self.plateID, mjd, scanNumStr)
+        filename = "plPlugMapM-%i-%i-%s-test.par"%(self.plateID, mjd, scanNumStr)
         self.plPlugMap.write(os.path.join(writeDir, filename))
 
     def plotMissing(self):
@@ -198,6 +273,7 @@ class FocalSurfaceSolver(object):
         # also determine the rough plate center, averaging x and y
         measXPos = measXPos - numpy.mean(measXPos)
         measYPos = -1*(measYPos - numpy.mean(measYPos))
+        # measYPos = measYPos - numpy.mean(measYPos)
         # in polar coords..
         measR = numpy.sqrt(measXPos**2+measYPos**2)
         measTheta = numpy.arctan2(measYPos, measXPos)
