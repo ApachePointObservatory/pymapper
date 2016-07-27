@@ -3,6 +3,7 @@
 from __future__ import division, absolute_import
 
 import argparse
+import time
 
 from math import floor
 import os
@@ -14,7 +15,7 @@ from twisted.internet import reactor
 
 from sdss.utilities.astrodatetime import datetime
 
-from .camera import Camera, sortDetections, IMGBASENAME, IMGEXTENSION, getScanParams, pickleDetectionList
+from .camera import Camera, sortDetections, IMGBASENAME, IMGEXTENSION, getScanParams, pickleDetectionList, plotDetectionsVsSlitPos
 # from .imgProcess import DetectedFiberList
 from .motor import MotorController
 from .fiberAssign import SlitheadSolver, FocalSurfaceSolver
@@ -105,7 +106,6 @@ def configureLogging(scanDir, overwrite=True):
     root.addHandler(ch)
     return logfile
 
-
 def reprocess(args):
     # get all relative information
     # from existing log file
@@ -120,7 +120,7 @@ def reprocess(args):
     if not imgs:
         raise RuntimeError("Scan directory doesn't contain existing imgs, cannot --reprocess!")
     logfile = configureLogging(scanDir, overwrite=False)
-    logging.info("reprocessing images in %s"%scanDir)
+    print("reprocessing images in %s"%scanDir)
     # determine previous scan params
     scanParams = getScanParams(logfile)
     startPos = scanParams["start"]
@@ -131,23 +131,24 @@ def reprocess(args):
     camera = Camera(scanDir, startPos, scanSpeed)
     def solvePlate():
         # load the (previously pickled centroid list)
-        logging.info("sorting detections. makePlots=%s"%str(args.makePlots))
+        print("sorting detections. makePlots=%s"%str(args.makePlots))
         detectedFiberList = sortDetections(camera.centroidList, plot=args.makePlots)
         # pickle and save the detection list
         pickleDetectionList(detectedFiberList, scanDir)
-        logging.info("scan finished.")
-        logging.info("found %i fibers"%len(detectedFiberList))
+        print("scan finished.")
+        print("found %i fibers"%len(detectedFiberList))
         nImages = len(camera.getAllImgFiles)
         scanTime = abs(endPos - startPos)/float(scanSpeed)
         fps = nImages / scanTime
-        logging.info("%i images taken, FPS: %.4f"%(nImages, fps))
+        print("%i images taken, FPS: %.4f"%(nImages, fps))
         # not yet ready to solve plate:
-        logging.info("correlating fiber positions on slit")
+        print("correlating fiber positions on slit")
+        plotDetectionsVsSlitPos(scanDir)
         shs = SlitheadSolver(detectedFiberList)
         shs.getOffsetAndScale()
         shs.matchDetections()
         plugMapPath = pathPlugMapP(args.plateID)
-        logging.info("plugmap path", plugMapPath)
+        print("plugmap path", plugMapPath)
         assert os.path.exists(plugMapPath)
         fss = FocalSurfaceSolver(detectedFiberList, plugMapPath)
     camera.doneProcessingCallback(solvePlate)
@@ -157,6 +158,7 @@ def reprocess(args):
 def runScan(args):
     """Move motor, take images, etc
     """
+    tstart = time.time()
     if args.plateID is None:
         raise RuntimeError("Must specify --plateID")
     baseDir = os.path.abspath(args.rootDir)
@@ -169,11 +171,11 @@ def runScan(args):
             try:
                 os.makedirs(baseDir)
             except:
-                logging.info("failed to create base directory %s (permissions?)"%baseDir)
+                print("failed to create base directory %s (permissions?)"%baseDir)
                 sys.exit()
         else:
             # exit program
-            logging.info("bye!"); sys.exit()
+            print("bye!"); sys.exit()
 
     if args.scanDir is None:
         # no scan dir, try to provide the next one
@@ -195,7 +197,7 @@ def runScan(args):
         question = "No scan directory provided, create new one: %s?"%scanDir
         output = query_yes_no(question, default="yes")
         if not output:
-            logging.info("bye!"); sys.exit()
+            print("bye!"); sys.exit()
     else:
         scanDir = args.scanDir
     scanDir = os.path.join(baseDir, scanDir)
@@ -211,21 +213,35 @@ def runScan(args):
                     for img in imgs:
                         os.remove(img)
                 except:
-                    logging.info("failed to remove existing images in %s (permissions?)"%scanDir)
+                    print("failed to remove existing images in %s (permissions?)"%scanDir)
                     sys.exit()
     else:
         #create the new scan dir
         try:
             os.makedirs(scanDir)
         except:
-            logging.info("failed to create scan directory in %s (permissions?)"%scanDir)
+            print("failed to create scan directory in %s (permissions?)"%scanDir)
             sys.exit()
 
-    logging.info("scanDir: %s"%scanDir)
-    logging.info("plate ID: %i"%args.plateID)
-    logging.info("motor start pos (mm): %.2f"%args.startPos)
-    logging.info("motor end pos (mm): %.2f"%args.endPos)
-    logging.info("motor scan speed (mm/sec): %.2f"%args.scanSpeed)
+    logfile = os.path.join(scanDir, "scan.log")
+    if os.path.exists(logfile):
+        os.remove(logfile)
+    logging.basicConfig(filename=logfile, level=logging.DEBUG)
+
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG)
+
+    ch = logging.StreamHandler(sys.stdout)
+    ch.setLevel(logging.DEBUG)
+    # formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    # ch.setFormatter(formatter)
+    root.addHandler(ch)
+
+    print("scanDir: %s"%scanDir)
+    print("plate ID: %i"%args.plateID)
+    print("motor start pos (mm): %.2f"%args.startPos)
+    print("motor end pos (mm): %.2f"%args.endPos)
+    print("motor scan speed (mm/sec): %.2f"%args.scanSpeed)
 
 
     # create directory to hold camera images
@@ -247,41 +263,46 @@ def runScan(args):
     # set up callback chains for mapping process
 
     def stopCamera():
-        logging.info("stopCamera")
+        print("stopCamera")
         # motor is done scanning, kill camera
         camera.stopAcquisition()
 
     def moveMotor():
         # camera is acquiring begin moving motor/laser
-        logging.info("moveMotor")
+        print("moveMotor")
         motorController.scan(callFunc=stopCamera)
 
     def startCamera():
         # motor is ready to move, begin snapping pics
-        logging.info("startCamera")
+        print("startCamera")
         camera.beginAcquisition(callFunc=moveMotor)
 
     def solvePlate():
         # load the (previously pickled centroid list)
-        logging.info("sorting detections. makePlots=%s"%str(args.makePlots))
+        print("sorting detections. makePlots=%s"%str(args.makePlots))
         detectedFiberList = sortDetections(camera.centroidList, plot=args.makePlots)
         # pickle and save the detection list
         pickleDetectionList(detectedFiberList, scanDir)
-        logging.info("scan finished.")
-        logging.info("found %i fibers"%len(detectedFiberList))
+        print("scan finished.")
+        print("found %i fibers"%len(detectedFiberList))
         nImages = len(glob.glob(os.path.join(scanDir, "*.bmp")))
         scanTime = abs(args.endPos - args.startPos)/float(args.scanSpeed)
         fps = nImages / scanTime
-        logging.info("%i images taken, FPS: %.4f"%(nImages, fps))
+        print("%i images taken, FPS: %.4f"%(nImages, fps))
+        plotDetectionsVsSlitPos(scanDir)
         shs = SlitheadSolver(detectedFiberList)
         shs.getOffsetAndScale()
         shs.matchDetections()
-        # not yet ready to solve plate:
+        print("missing fibers: ")
+        for fiber in shs.missingFibers:
+            print("fiber %i"%fiber)
+        print("slit match rms: %.2f"%shs.rms)
 
         plugMapPath = pathPlugMapP(args.plateID)
-        logging.info("plugmap path", plugMapPath)
+        print("plugmap path", plugMapPath)
         assert os.path.exists(plugMapPath)
-        fss = FocalSurfaceSolver(detectedFiberList, plugMapPath)
+        fss = FocalSurfaceSolver(detectedFiberList, plugMapPath, scanDir)
+        print("total time for map: %2.f"%(time.time()-tstart))
 
     camera.doneProcessingCallback(solvePlate)
 
@@ -345,7 +366,7 @@ if __name__ == "__main__":
 
 """
     MJD = floor(datetime.now().mjd)
-    logging.info("MJD: %i"%MJD)
+    print("MJD: %i"%MJD)
     #create mjd directory
     mjddir = os.path.join(scandir, "%i"%MJD)
     if not os.path.exists(mjddir):
@@ -361,5 +382,5 @@ if __name__ == "__main__":
             os.makedirs(imageDir)
             break
         scanNum += 1
-    logging.info("scanNumber %i"%scanNum)
+    print("scanNumber %i"%scanNum)
 """

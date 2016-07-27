@@ -71,6 +71,10 @@ MINSEP = 3.5 # min between fibers separation in pixels
 CCDInfo = PyGuide.CCDInfo(bias=1, readNoise=0, ccdGain=1)
 # self.imageDir = os.path.join(os.environ["PYMAPPER_DIR"], "tests")
 
+TZERO = None
+MOTORSPEED = None
+MOTORSTART = None
+
 def extractValue(logLine):
     """Get the float value following the ":" in a line
     """
@@ -111,10 +115,10 @@ def _basePickle(basename, pyobj, scanDir):
         fTime = time.ctime(os.path.getmtime(filename))
         movedfilename = "%s-%s.pkl"%(basename, fTime)
         shutil.move(filename, movedfilename)
-        logging.info("moving %s to %s"%(filename, movedfilename))
+        print("moving %s to %s"%(filename, movedfilename))
     output = open(filename, "wb")
     pickle.dump(pyobj, output)
-    logging.info("dumping to %s"%(filename))
+    print("dumping to %s"%(filename))
     output.close()
 
 def _baseUnpickle(basename, scanDir):
@@ -183,8 +187,12 @@ def getSortedImages(imageFileDirectory, imgBaseName=IMGBASENAME, imgExtension=IM
 
 class Camera(object):
     def __init__(self, imageDir, motorStart, motorSpeed, ramDisk=False):
+        global MOTORSTART
+        global MOTORSPEED
         self.motorStart = motorStart
         self.motorSpeed = motorSpeed
+        MOTORSTART = self.motorStart
+        MOTORSPEED = self.motorSpeed
         self.tZero = None # timestamp of the first image
         self.acquiring = False
         self.process = None
@@ -225,7 +233,7 @@ class Camera(object):
         """call callFunc when acquision has started (first image seen in directory)
         """
         if callFunc is not None:
-            logging.info("setting acquision cb: %s"%str(callFunc))
+            print("setting acquision cb: %s"%str(callFunc))
             self.acquisitionCB = callFunc
         self.acquiring = True
         # this process initializes and starts the camera
@@ -233,14 +241,16 @@ class Camera(object):
         self.waitForFirstImage()
 
     def stopAcquisition(self):
-        logging.info("Stopping Camera Acquision")
+        print("Stopping Camera Acquision")
         self.process.kill()
         self.acquiring = False
 
     def multiprocessDone(self):
-        logging.info("All frames processed!")
-        logging.info("pickling centroid list")
-        logging.info("processed %.2f frames per second"% (len(self.centroidList)/(time.time()-self.processingStart)))
+        print("All frames processed!")
+        print("pickling centroid list")
+        totalTime = time.time()-self.processingStart
+        print("total time: %.2f"%totalTime)
+        print("processed %.2f frames per second"% (len(self.centroidList)/totalTime))
         pickleCentroids(self.centroidList, self.imageDir)
         if self.procImgCall is not None:
             self.procImgCall()
@@ -248,12 +258,14 @@ class Camera(object):
     def waitForFirstImage(self):
         # loop here until the first image is seen.  Once it is
         # fire the acquisition callback and begin processing
+        global TZERO
         if os.path.exists(self.getNthFile(1)):
-            logging.info("acquisition started")
+            print("acquisition started")
             # set the zeroth timestamp for determining motor position for each image
             self.tZero = os.path.getmtime(self.getNthFile(1))
+            TZERO = self.tZero
             if self.acquisitionCB is not None:
-                logging.info("firing acquisition callback")
+                print("firing acquisition callback")
                 reactor.callLater(0., self.acquisitionCB)
             # the first image is here, we're free to start
             # processing them
@@ -264,7 +276,7 @@ class Camera(object):
             reactor.callLater(0., self.waitForFirstImage)
 
     # def multiprocessNext(self, centroidList):
-    #     logging.info("multiprocessNext")
+    #     print("multiprocessNext")
     #     self.centroidList.extend(centroidList)
     #     self.multiprocessImageLoop()
         # reactor.callLater(0., self.multiprocessImageLoop)
@@ -278,67 +290,113 @@ class Camera(object):
 
     def multiprocessImageLoop(self, centroidList=None):
         # called recursively until all images are (multi!) processed
-        logging.info("multiprocessImageLoop")
+        print("multiprocessImageLoop")
         if centroidList:
-            logging.info("adding %i centroids"%len(centroidList))
+            print("adding %i centroids"%len(centroidList))
             self.centroidList.extend(centroidList)
         unprocessedFileList = self.getUnprocessedFileList()
         # don't process more than 20 images at a time
         unprocessedFileList = unprocessedFileList[:50]
         if unprocessedFileList:
-            logging.info("processing images %s to %s"%tuple([os.path.split(_img)[-1] for _img in [unprocessedFileList[0], unprocessedFileList[-1]]]))
-            self.multiprocessImage(unprocessedFileList, self.multiprocessImageLoop, block=False)
+            print("processing images %s to %s"%tuple([os.path.split(_img)[-1] for _img in [unprocessedFileList[0], unprocessedFileList[-1]]]))
+            multiprocessImage(unprocessedFileList, self.multiprocessImageLoop, block=False)
         else:
             # no files to process.
-            logging.info("no files to process")
+            print("no files to process")
             if self.acquiring:
-                logging.info("still acquiring")
+                print("still acquiring")
                 # camera is still acquiring, so continue calling myself
                 reactor.callLater(0., self.multiprocessImageLoop)
             else:
                 # camera is done, no remaining files to process
                 self.multiprocessDone()
 
-    def multiprocessImage(self, imageFileList, callFunc, block=False):
-        # may want to try map_async
-        p = Pool(5)
-        if block:
-            output = p.map(self.processImage, imageFileList)
-            callFunc(output)
-            return None
-        else:
-            return p.map_async(self.processImage, imageFileList, callback=callFunc)
+    # def _multiprocessImage(self, imageFileList, callFunc, block=False):
+    #     # may want to try map_async
+    #     print("multiprocess image")
+    #     p = Pool(5)
+    #     if block:
+    #         output = p.map(processImage, imageFileList)
+    #         callFunc(output)
+    #         return None
+    #     else:
+    #         return p.map_async(processImage, imageFileList, callback=callFunc)
 
-    def processImage(self, imageFile):
-        """! Process a single image
+    # def _processImage(self, imageFile):
+    #     """! Process a single image
 
-        @param[in] imageFile. String
-        @param[in] fScanFrame: an FScanFrame obj
+    #     @param[in] imageFile. String
 
-        """
-        # print("processing img: ", os.path.split(imageFile)[-1])
-        timestamp = os.path.getmtime(imageFile) - self.tZero
-        imgData = scipy.ndimage.imread(imageFile)
-        counts = None
-        xyCtr = None
-        rad = None
-        try:
-            pyGuideCentroids = PyGuide.findStars(imgData, None, None, CCDInfo)[0]
-            # did we get any centroids?
-            if pyGuideCentroids:
-                counts = pyGuideCentroids[0].counts
-                xyCtr = pyGuideCentroids[0].xyCtr
-                rad = pyGuideCentroids[0].rad
-        except Exception:
-            print("some issue with pyguide on img (skipping): ", imageFile)
-            traceback.print_exc()
-        return dict((
-                        ("imageFile", imageFile),
-                        ("counts", counts),
-                        ("xyCtr", xyCtr),
-                        ("rad", rad),
-                        ("motorPos", self.motorStart + self.motorSpeed*timestamp)
-                    ))
+    #     """
+    #     print("processing img: ", os.path.split(imageFile)[-1])
+    #     timestamp = os.path.getmtime(imageFile) - self.tZero
+    #     frame = int(imageFile.split(IMGBASENAME)[-1].split(".")[0])
+    #     imgData = scipy.ndimage.imread(imageFile)
+    #     counts = None
+    #     xyCtr = None
+    #     rad = None
+    #     try:
+    #         pyGuideCentroids = PyGuide.findStars(imgData, None, None, CCDInfo)[0]
+    #         # did we get any centroids?
+    #         if pyGuideCentroids:
+    #             counts = pyGuideCentroids[0].counts
+    #             xyCtr = pyGuideCentroids[0].xyCtr
+    #             rad = pyGuideCentroids[0].rad
+    #     except Exception:
+    #         print("some issue with pyguide on img (skipping): ", imageFile)
+    #         traceback.print_exc()
+    #     return dict((
+    #                     ("imageFile", imageFile),
+    #                     ("counts", counts),
+    #                     ("xyCtr", xyCtr),
+    #                     ("rad", rad),
+    #                     ("motorPos", self.motorStart + self.motorSpeed*timestamp),
+    #                     ("frame", frame),
+    #                 ))
+
+def multiprocessImage(imageFileList, callFunc, block=False):
+    # may want to try map_async
+    p = Pool(5)
+    if block:
+        output = p.map(processImage, imageFileList)
+        callFunc(output)
+        return None
+    else:
+        return p.map_async(processImage, imageFileList, callback=callFunc)
+
+def processImage(imageFile):
+    """! Process a single image
+
+    @param[in] imageFile. String
+
+    """
+    global TZERO
+    global MOTORSPEED
+    global MOTORSTART
+    timestamp = os.path.getmtime(imageFile) - TZERO
+    frame = int(imageFile.split(IMGBASENAME)[-1].split(".")[0])
+    imgData = scipy.ndimage.imread(imageFile)
+    counts = None
+    xyCtr = None
+    rad = None
+    try:
+        pyGuideCentroids = PyGuide.findStars(imgData, None, None, CCDInfo)[0]
+        # did we get any centroids?
+        if pyGuideCentroids:
+            counts = pyGuideCentroids[0].counts
+            xyCtr = pyGuideCentroids[0].xyCtr
+            rad = pyGuideCentroids[0].rad
+    except Exception:
+        print("some issue with pyguide on img (skipping): ", imageFile)
+        traceback.print_exc()
+    return dict((
+                    ("imageFile", imageFile),
+                    ("counts", counts),
+                    ("xyCtr", xyCtr),
+                    ("rad", rad),
+                    ("motorPos", MOTORSTART + MOTORSPEED*timestamp),
+                    ("frame", frame),
+                ))
 
 class FScanCamera(Camera):
     """For testing with existing idlmapper fcan files
@@ -499,8 +557,11 @@ def sortDetections(brightestCentroidList, plot=False, minCounts=MINCOUNTS, minSe
         #     raise RuntimeError("Non-unique detection!!!!")
     return detectedFibers
 
-def plotDetectionsVsSlitPos(detectionList, dir):
-    fig = plt.figure(figsize=(10,10))
+def plotDetectionsVsSlitPos(scanDir=None):
+    if scanDir is None:
+        scanDir = os.getcwd()
+    detectionList = unpickleDetectionList(scanDir)
+    fig = plt.figure(figsize=(100,10))
     countsList = []
     rawMotorPos = []
     for detection in detectionList:
@@ -514,11 +575,11 @@ def plotDetectionsVsSlitPos(detectionList, dir):
         nFrames = len(detection.imageFiles)
         nFrameList.append(nFrames)
         middleFrame = nFrames // 2
-        detectionCounts.append(detection.counts[middleFrame]+15000)
+        detectionCounts.append(detection.counts[middleFrame])
         detectionMotorPos.append(detection.motorPos)
     plt.plot(rawMotorPos, countsList)
     plt.plot(detectionMotorPos, detectionCounts, 'or')
-    nfn = os.path.join(dir, "detectionsVsSlitPos.png")
+    nfn = os.path.join(scanDir, "detectionsVsSlitPos.png")
     fig.savefig(nfn); plt.close(fig)
 
 if __name__ == "__main__":

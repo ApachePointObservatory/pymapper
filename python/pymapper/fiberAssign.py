@@ -117,8 +117,10 @@ class SlitheadSolver(object):
         bestOffset = None
         bestEnergy = None
         scales = numpy.arange(1-0.002, 1+0.002, 0.0005)
-        offsets = numpy.arange(-2,2,FIBERDIAMETER/4.)
+        offsets = numpy.arange(-5,5,FIBERDIAMETER/4.)
         print("max offset:", offsets[-1])
+        scales = [1]
+        offsets = [0]
         # offsets = numpy.arange(-FIBERDIAMETER/2., FIBERDIAMETER/2., FIBERDIAMETER/100.)
         for scale in scales:
             print("scale", scale)
@@ -149,6 +151,8 @@ class SlitheadSolver(object):
             minInd = numpy.argmin(allErrs)
             err = allErrs[minInd]
             errs.append(err)
+            if minInd in inds:
+                import pdb; pdb.set_trace()
             assert minInd not in inds # can have on fiber match twice
             inds.append(minInd)
         self.matchInds = inds
@@ -160,7 +164,8 @@ class SlitheadSolver(object):
 
 
 class PlPlugMap(object):
-    def __init__(self, plPlugMapFile):
+    def __init__(self, plPlugMapFile, scanDir):
+        self.scanDir = scanDir
         self.plPlugMap = yanny(filename=plPlugMapFile, np=True)
         self.objectInds = numpy.argwhere(self.plPlugMap["PLUGMAPOBJ"]["holeType"]=="OBJECT")
         self.xPos = self.plPlugMap["PLUGMAPOBJ"]["xFocal"][self.objectInds].flatten()
@@ -201,7 +206,7 @@ class PlPlugMap(object):
     def plotMissing(self):
         tabHeight = 0.5 * MMPERINCH
         tabWidth = 0.8 * MMPERINCH
-        plt.figure(figsize=(10,10))
+        fig = plt.figure(figsize=(10,10))
         plt.box(on=True)
         radLimit = PLATERADIUS + tabHeight + 10 #mm
         limits = (-1*radLimit, radLimit)
@@ -235,16 +240,19 @@ class PlPlugMap(object):
                 marker = "o" #circle
                 color = "black"
             plt.plot(xPos, yPos, marker=marker, color=color, fillstyle="none", mew=2)
-        plt.show(block=True)
+        # plt.show(block=True)
+        figname = os.path.join(self.scanDir, "unplugged.png")
+        fig.savefig(figname); plt.close(fig)
 
 
 
 class FocalSurfaceSolver(object):
-    def __init__(self, detectedFiberList, plPlugMapFile):
+    def __init__(self, detectedFiberList, plPlugMapFile, scanDir):
+        self.scanDir = scanDir
         self.detectedFiberList = detectedFiberList
         if not os.path.exists(plPlugMapFile):
             raise RuntimeError("coudl not locate plPlugMapFile: %s"%plPlugMapFile)
-        self.plPlugMap = PlPlugMap(plPlugMapFile)
+        self.plPlugMap = PlPlugMap(plPlugMapFile, scanDir)
         #self.nHistBins = 100 # number of bins for histogram
         #self.focalRadHist, self.binEdges = numpy.histogram(self.plPlugMap.radPos, bins=self.nHistBins)
         # self.plotRadialHist(self.plPlugMap.radPos, bins=self.binEdges)
@@ -255,7 +263,7 @@ class FocalSurfaceSolver(object):
         self.matchMeasToPlPlugMap(self.measXPos, self.measYPos) # sets attriubte plPlugMapInds
         throughputList = self.getThroughputList()
         self.plPlugMap.enterMappedData(self.measPosInds, throughputList, self.plPlugMapInds)
-        self.plPlugMap.writeMe(os.path.split(plPlugMapFile)[0], 55555)
+        self.plPlugMap.writeMe(scanDir, 55555)
         self.plPlugMap.plotMissing()
 
     def getThroughputList(self):
