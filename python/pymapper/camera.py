@@ -11,7 +11,7 @@ import logging
 import traceback
 from multiprocessing import Pool
 import matplotlib
-matplotlib.use("Agg")
+# matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import shutil
 
@@ -186,7 +186,7 @@ def getSortedImages(imageFileDirectory, imgBaseName=IMGBASENAME, imgExtension=IM
     return imageFilesSorted
 
 class Camera(object):
-    def __init__(self, imageDir, motorStart, motorSpeed, ramDisk=False):
+    def __init__(self, imageDir, motorStart, motorSpeed):
         global MOTORSTART
         global MOTORSPEED
         self.motorStart = motorStart
@@ -197,9 +197,9 @@ class Camera(object):
         self.acquiring = False
         self.process = None
         self.imageDir = imageDir
-        assert os.path.exists(imageDir), "%s doesn't exist, create it"%imageDir
+        # assert os.path.exists(imageDir), "%s doesn't exist, create it"%imageDir
         # whine if this directory already has images
-        assert len(self.getAllImgFiles())==0, "%s is not empty!"%imageDir
+        # assert len(self.getAllImgFiles())==0, "%s is not empty!"%imageDir
         self.acquisionCB = None
         self.procImgCall = None
         self.centroidList = []
@@ -232,6 +232,7 @@ class Camera(object):
     def beginAcquisition(self, callFunc=None):
         """call callFunc when acquision has started (first image seen in directory)
         """
+        print("beginAcquisition")
         if callFunc is not None:
             print("setting acquision cb: %s"%str(callFunc))
             self.acquisitionCB = callFunc
@@ -283,9 +284,12 @@ class Camera(object):
 
 
     def reprocessImages(self):
+        global TZERO
         self.tZero = os.path.getmtime(self.getNthFile(1))
+        TZERO = self.tZero
+        self.processingStart = time.time()
         allImgFiles = self.getAllImgFiles()
-        self.centroidList = self.multiprocessImage(allImgFiles, callFunc=None, block=True)
+        self.centroidList = multiprocessImage(allImgFiles, callFunc=None, block=True)
         self.multiprocessDone()
 
     def multiprocessImageLoop(self, centroidList=None):
@@ -295,7 +299,7 @@ class Camera(object):
             print("adding %i centroids"%len(centroidList))
             self.centroidList.extend(centroidList)
         unprocessedFileList = self.getUnprocessedFileList()
-        # don't process more than 20 images at a time
+        # don't process more than 50 images at a time
         unprocessedFileList = unprocessedFileList[:50]
         if unprocessedFileList:
             print("processing images %s to %s"%tuple([os.path.split(_img)[-1] for _img in [unprocessedFileList[0], unprocessedFileList[-1]]]))
@@ -354,13 +358,14 @@ class Camera(object):
     #                     ("frame", frame),
     #                 ))
 
-def multiprocessImage(imageFileList, callFunc, block=False):
+def multiprocessImage(imageFileList, callFunc=None, block=False):
     # may want to try map_async
     p = Pool(5)
     if block:
         output = p.map(processImage, imageFileList)
-        callFunc(output)
-        return None
+        if callFunc is not None:
+            callFunc(output)
+        return output
     else:
         return p.map_async(processImage, imageFileList, callback=callFunc)
 
@@ -370,33 +375,40 @@ def processImage(imageFile):
     @param[in] imageFile. String
 
     """
-    global TZERO
-    global MOTORSPEED
-    global MOTORSTART
-    timestamp = os.path.getmtime(imageFile) - TZERO
-    frame = int(imageFile.split(IMGBASENAME)[-1].split(".")[0])
-    imgData = scipy.ndimage.imread(imageFile)
-    counts = None
-    xyCtr = None
-    rad = None
     try:
-        pyGuideCentroids = PyGuide.findStars(imgData, None, None, CCDInfo)[0]
-        # did we get any centroids?
-        if pyGuideCentroids:
-            counts = pyGuideCentroids[0].counts
-            xyCtr = pyGuideCentroids[0].xyCtr
-            rad = pyGuideCentroids[0].rad
-    except Exception:
-        print("some issue with pyguide on img (skipping): ", imageFile)
+        global TZERO
+        global MOTORSPEED
+        global MOTORSTART
+        frame = int(imageFile.split(IMGBASENAME)[-1].split(".")[0])
+        imgData = scipy.ndimage.imread(imageFile)
+        # timestamp = os.path.getmtime(imageFile) - TZERO
+        timestamp = TZERO + ((frame-1)/11.) - TZERO # hack time!!!!
+        counts = None
+        xyCtr = None
+        rad = None
+        totalCounts = numpy.sum(imgData)
+        try:
+            pyGuideCentroids = PyGuide.findStars(imgData, None, None, CCDInfo)[0]
+            # did we get any centroids?
+            if pyGuideCentroids:
+                counts = pyGuideCentroids[0].counts
+                xyCtr = pyGuideCentroids[0].xyCtr
+                rad = pyGuideCentroids[0].rad
+        except Exception:
+            print("some issue with pyguide on img (skipping): ", imageFile)
+            traceback.print_exc()
+        return dict((
+                        ("imageFile", imageFile),
+                        ("counts", counts),
+                        ("xyCtr", xyCtr),
+                        ("rad", rad),
+                        ("motorPos", MOTORSTART + MOTORSPEED*timestamp),
+                        ("frame", frame),
+                        ("totalCounts", totalCounts),
+                    ))
+    except:
+        print("Exception in processImage: GAAAHHHHHH")
         traceback.print_exc()
-    return dict((
-                    ("imageFile", imageFile),
-                    ("counts", counts),
-                    ("xyCtr", xyCtr),
-                    ("rad", rad),
-                    ("motorPos", MOTORSTART + MOTORSPEED*timestamp),
-                    ("frame", frame),
-                ))
 
 class FScanCamera(Camera):
     """For testing with existing idlmapper fcan files
@@ -438,6 +450,7 @@ class FScanCamera(Camera):
         counts = None
         xyCtr = None
         rad = None
+        totalCounts = numpy.sum(imgData)
         # k = numpy.array([[.1,.1,.1],[.1,1,.1],[.1,.25,.1]])
         # imgData = scipy.ndimage.convolve(imgData, k)
         # imgData = scipy.ndimage.filters.median_filter(imgData, 3)
@@ -458,6 +471,7 @@ class FScanCamera(Camera):
                         ("rad", rad),
                         ("motorPos", motorPos),
                         ("frame", fScanFrame.frame),
+                        ("totalCounts", totalCounts)
                     ))
 
 class DetectedFiber(object):
@@ -465,6 +479,24 @@ class DetectedFiber(object):
         self.centroidList = [centroidDict]
         # self.centroids = [pyGuideCentroid]
         # self.imageFiles = [imageFileName]
+        self.slitHeadInd = None
+        self.plPlugObjInd = None
+        self.focalPos = [None, None]
+
+    def setSlitIndex(self, index):
+        self.slitHeadInd = index
+
+    def getSlitIndex(self):
+        return self.slitHeadInd
+
+    def setPlPlugObjInd(self, index):
+        self.plPlugObjInd = index
+
+    def getPlPlugObjInd(self):
+        return self.plPlugObjInd
+
+    def setFocalPos(self, focalPos):
+        self.focalPos = focalPos
 
     @property
     def imageFiles(self):
@@ -493,6 +525,15 @@ class DetectedFiber(object):
         return [centroid["motorPos"] for centroid in self.centroidList]
 
     @property
+    def frame(self):
+        # return center based on weighted counts
+        return numpy.average([cent["frame"] for cent in self.centroidList], axis=0, weights=self.counts)
+
+    @property
+    def frames(self):
+        return [centroid["frame"] for centroid in self.centroidList]
+
+    @property
     def rad(self):
         return numpy.average([cent["rad"] for cent in self.centroidList], axis=0, weights=self.counts)
 
@@ -518,7 +559,15 @@ def sortDetections(brightestCentroidList, plot=False, minCounts=MINCOUNTS, minSe
     of detections (1 group per fiber)
     """
     detectedFibers = []
+    prevFrame = -1
+    # get the motor positions
+    timestamps = [cent["motorPos"] for cent in brightestCentroidList]
+    tsdiff = numpy.diff(timestamps)
+    print("motorpos/frame: %.4f +/- %.4f"%(numpy.mean(tsdiff), numpy.std(tsdiff)))
     for brightestCentroid in brightestCentroidList:
+        if brightestCentroid["frame"] < prevFrame:
+            raise RuntimeError("centroids not sorted in ascending frame order!")
+        prevFrame = brightestCentroid["frame"]
         isNewDetection = None
         crashMe = False
         if brightestCentroid["counts"] is not None and brightestCentroid["counts"] > MINCOUNTS:

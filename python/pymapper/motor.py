@@ -148,6 +148,7 @@ class MotorController(object):
         self.getStatus(callFunc=self.checkHomeThenMove)
 
     def scan(self, callFunc=None):
+        print("beginning scan")
         self.move(self.endPos)
         self.laserOff(callFunc=callFunc)
         # send motor back to start position

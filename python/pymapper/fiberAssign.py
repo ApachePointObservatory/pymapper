@@ -20,7 +20,7 @@ from scipy.optimize import minimize_scalar
 import scipy.optimize
 
 import matplotlib
-matplotlib.use("Agg")
+# matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from sdss.utilities.yanny import yanny
@@ -48,14 +48,47 @@ INTER_SLIT_FIBERCENTER_DIST = 350 / MICRONSPERMM
 INTER_BLOCK_FIBERCETNER_DIST = 0.5 #mm
 
 class SlitheadSolver(object):
-    def __init__(self, detectedFiberList, fiberslitposFile=None):
+    def __init__(self, detectedFiberList, centroidList, fiberslitposFile=None):
         """List of detections
         """
         if fiberslitposFile is None:
             fiberslitposFile = os.path.join(os.getenv("PYMAPPER_DIR"), "etc", "fiberslitpos.dat")
         self.detectedFiberList = detectedFiberList
+        self.centroidList = centroidList
         self.nomFiberNum, self.nomMotorPos = self.parseFiberPosFile(fiberslitposFile)
-        self.detMotorPos, self.detCounts = self.generateDetectionTrace()
+        self.hackNomPos()
+        # self.detMotorPos, self.detCounts = self.generateDetectionTrace()
+        # self.detMotorPos = [det.motorPos for det in self.detectedFiberList]
+        self.detMotorPos, self.normalizedFlux = self.generateDetectionTrace()
+        self.modeledMotorPos = numpy.arange(self.nomMotorPos[0]-4, self.nomMotorPos[-1]+4, FIBERDIAMETER/4)
+        self.modeledFluxes = [self.fluxFromMotorPos(motorPos) for motorPos in self.modeledMotorPos]
+        self.correlate()
+
+    def hackNomPos(self):
+        self.nomMotorPos = numpy.asarray(self.nomMotorPos) * 1.05 - 1 + 10
+
+    def correlate(self):
+        maxCor = None
+        maxShift = None
+        maxScale = None
+        rescaledMotorPositions = None
+        for scale in numpy.arange(1-0.002, 1+0.002, 0.0005):
+            modeledMotorPos = self.detMotorPos * scale
+            modeledFluxes = [self.fluxFromMotorPos(motorPos) for motorPos in modeledMotorPos]
+            cout = numpy.correlate(self.normalizedFlux, modeledFluxes, mode="full")
+            maxInd = numpy.argmax(cout)
+            maxVal = cout[maxInd]
+            shift = maxInd - int(len(cout)/2)
+            if maxCor is None or maxVal > maxCor:
+                maxCor = maxVal
+                maxShift = shift
+                maxScale = scale
+                rescaledMotorPositions = modeledMotorPos
+        # print("shift of %i for scale %.8f"%(maxShift, maxScale))
+        self.offset = maxShift * numpy.mean(numpy.diff(self.detMotorPos*maxScale))
+        print("offset: %.4f"%self.offset)
+        self.scale = maxScale
+        self.rescaledMotorPositions = rescaledMotorPositions + self.offset
 
     def parseFiberPosFile(self, fiberslitposFile):
         fiberNums = []
@@ -72,36 +105,38 @@ class SlitheadSolver(object):
         return fiberNums, motorPositions
 
     def generateDetectionTrace(self):
-        detMotorPos = []
-        detCounts = []
+        normalizedFlux = numpy.zeros(self.centroidList[-1]["frame"])
+        detMotorPos = numpy.array([cent["motorPos"] for cent in self.centroidList])
         for detection in self.detectedFiberList:
-            detMotorPos += detection.motorPositions
-            detCounts += detection.counts
-        return detMotorPos, detCounts
+            # normalize all counts to sum to 1
+            # for each detection
+            detSum = numpy.sum(detection.counts)
+            for frame, counts in itertools.izip(detection.frames, detection.counts):
+                normalizedFlux[frame-1] = counts/detSum
+        return detMotorPos, normalizedFlux
 
-    def fluxFromMotorPos(self, motorPos, motorCounts, offset=0, scale=1):
+
+    def fluxFromMotorPos(self, motorPos):
         """Return expected power from a motorPosition based on
         the measured positions on the slit
         model as a gaussain at each measured fiber position on the slit
         """
-        # find the nearest motor pos
-        motorPosLookup = numpy.asarray(self.nomMotorPos)*scale + offset
-        minDist = numpy.abs(numpy.min(motorPosLookup - motorPos))
+        minDist = numpy.min(numpy.abs(numpy.asarray(self.nomMotorPos) - motorPos))
         # print("minDist", minDist)
         # thats the minimum distance to the nearest gaussian (or expected position)
-        return motorCounts * numpy.exp(-1*(minDist)**2/float(2*FIBERDIAMETER**2))
+        return 0.5*numpy.exp(-1*(minDist)**2/float(FIBERDIAMETER**2))
 
-    def computeEnergy(self, x):
-        """x[0] is offset x[1] is scale
-        """
-        offset = x[0]
-        scale = x[1]
-        totalEnergy = 0
-        for motorPos, motorCounts in itertools.izip(self.detMotorPos, self.detCounts):
-            totalEnergy += self.fluxFromMotorPos(motorPos, motorCounts, offset, scale)
-        return -1 * totalEnergy
+    # def computeEnergy(self, x):
+    #     """x[0] is offset x[1] is scale
+    #     """
+    #     offset = x[0]
+    #     scale = x[1]
+    #     totalEnergy = 0
+    #     for motorPos, motorCounts in itertools.izip(self.detMotorPos, self.detCounts):
+    #         totalEnergy += self.fluxFromMotorPos(motorPos, motorCounts, offset, scale)
+    #     return -1 * totalEnergy
 
-    def getOffsetAndScale(self):
+    def _getOffsetAndScale(self):
               # from IDL:
               # scale_best = 0
               # shift_best = 0
@@ -136,10 +171,73 @@ class SlitheadSolver(object):
         self.offset = bestOffset
         self.scale = bestScale
 
+
+    # def offsetScaleMin(self, coeffs):
+    #     """coeffs = [scale, offset]
+    #     """
+    #     scale, offset = coeffs
+    #     print("scale, off %.4f, %.4f "%(scale, offset))
+    #     # scale and offset measured fiber positions compute difference
+    #     # with model
+    #     measuredFlux = numpy.asarray([self.fluxFromMotorPos(motorPos*scale+offset) for motorPos in self.detMotorPos])
+    #     # modeled flux is ones at each motor pos
+    #     modeledFlux = numpy.ones(len(measuredFlux))
+    #     errSqrd = (measuredFlux-modeledFlux)**2
+    #     return errSqrd
+
+    def offsetScaleMin(self, offset):
+        """coeffs = [scale, offset]
+        """
+        # scale and offset measured fiber positions compute difference
+        # with model
+        # print("offset", offset)
+        measuredDist = []
+        for motorPos in [df.motorPos for df in self.detectedFiberList]:
+            measuredDist.append(numpy.sum(numpy.abs(numpy.subtract(self.nomMotorPos, motorPos+offset[0]))))
+        # val = numpy.sum(measuredDist)
+        # print("scale, off, val %.4f, %.4f, %.4f "%(scale, offset, val))
+        return measuredDist
+
+    def offsetScaleMin2(self, offset, scale):
+        """coeffs = [scale, offset]
+        """
+        # scale and offset measured fiber positions compute difference
+        # with model
+        # print("offset", offset)
+        measuredDist = []
+        for motorPos in [df.motorPos for df in self.detectedFiberList]:
+            measuredDist.append(numpy.sum(numpy.abs(numpy.subtract(self.nomMotorPos, motorPos*scale+offset[0]))))
+        # val = numpy.sum(measuredDist)
+        # print("scale, off, val %.4f, %.4f, %.4f "%(scale, offset, val))
+        return numpy.sum(measuredDist)
+
+    # def getOffsetAndScale(self, doRaise=True, maxFuncEval=5000):
+    #     # initialCoeffs = numpy.asarray([1, 0]) # scale =1 offset 0
+    #     # fitCoeffs, status = scipy.optimize.leastsq(
+    #     #     self.offsetScaleMin,
+    #     #     [0],
+    #     #     # maxfev = None,
+    #     # )
+    #     # if status not in range(5):
+    #     #     if doRaise:
+    #     #         raise RuntimeError("fit failed")
+    #     bestF = None
+    #     bestOffset = None
+    #     bestScale = None
+    #     for scale in numpy.arange(1-0.002, 1+0.002, 0.0005):
+    #         x, fopt = fmin(self.offsetScaleMin2, [0], args=(scale,), full_output=1)[:2]
+    #         # print("fit coeffs", fitCoeffs)
+    #         if bestF is None or fopt < bestF:
+    #             bestF = fopt
+    #             bestOffset = x[0]
+    #             bestScale = scale
+    #     self.offset = bestOffset
+    #     self.scale = bestScale
+
     def matchDetections(self):
         # scale the measured motor positions of by the scaling
-        nomMatchPos = numpy.asarray(self.nomMotorPos)*self.scale + self.offset
-        measMatchPos = [detectedFiber.motorPos for detectedFiber in self.detectedFiberList]
+        # nomMatchPos = numpy.asarray(self.nomMotorPos)*self.scale + self.offset
+        measMatchPos = [detectedFiber.motorPos*self.scale + self.offset for detectedFiber in self.detectedFiberList]
         inds = []
         errs = []
         for measMotorPos in measMatchPos:
@@ -147,7 +245,7 @@ class SlitheadSolver(object):
             # to a nominal fiber (after scale and offset have been applied)
             # it is assued that the measured positions should be
             # very close to only one of the nominal positions
-            allErrs = numpy.abs(measMotorPos-nomMatchPos)
+            allErrs = numpy.abs(measMotorPos-self.rescaledMotorPositions)
             minInd = numpy.argmin(allErrs)
             err = allErrs[minInd]
             errs.append(err)
@@ -159,6 +257,9 @@ class SlitheadSolver(object):
         self.missingFibers = sorted([fiber+1 for fiber in set(range(300))-set(self.matchInds)])
         # next calculate the RMS from all errors
         self.rms = numpy.sqrt(numpy.sum(numpy.asarray(errs)**2) / len(errs)) # rms err in mm
+        # set each detected fibers pos on the slit head
+        for matchInd, detectedFiber in itertools.izip(self.matchInds, self.detectedFiberList):
+            detectedFiber.setSlitIndex(matchInd)
 
 
 
@@ -173,11 +274,23 @@ class PlPlugMap(object):
         self.radPos = numpy.sqrt(self.xPos**2+self.yPos**2)
         self.plateID = int(self.plPlugMap["plateId"])
 
-    def enterMappedData(self, mappedFiberInds, mappedFiberThroughputs, mappedPlPlugObjInds):
+    def enterMappedData(self, detectedFiberList):
         # for fibers not found enter fiberID = -1, spectrographID = -1, and throughput = 0
         # first set spectrograph id and fiber id to -1 for all OBJECTS
-        self.plPlugMap["PLUGMAPOBJ"]["spectrographId"][self.objectInds] = -1
-        self.plPlugMap["PLUGMAPOBJ"]["fiberId"][self.objectInds] = -1
+        # self.plPlugMap["PLUGMAPOBJ"]["spectrographId"][self.objectInds] = 6
+        # self.plPlugMap["PLUGMAPOBJ"]["fiberId"][self.objectInds] = -1
+        # throughput should already be 0....do we need to check?\
+        for detectedFiber in detectedFiberList:
+            objInd = detectedFiber.getPlPlugObjInd()
+            plInd = self.objectInds[plInd]
+            self.plPlugMap["PLUGMAPOBJ"]["fiberId"][plInd] = detectedFiber.getSlitIndex()
+            self.plPlugMap["PLUGMAPOBJ"]["throughput"][plInd] = detectedFiber.counts
+
+    def _enterMappedData(self, mappedFiberInds, mappedFiberThroughputs, mappedPlPlugObjInds):
+        # for fibers not found enter fiberID = -1, spectrographID = -1, and throughput = 0
+        # first set spectrograph id and fiber id to -1 for all OBJECTS
+        # self.plPlugMap["PLUGMAPOBJ"]["spectrographId"][self.objectInds] = 6
+        # self.plPlugMap["PLUGMAPOBJ"]["fiberId"][self.objectInds] = -1
         # throughput should already be 0....do we need to check?\
         for plInd, fiberInd, fiberThroughput in itertools.izip(mappedPlPlugObjInds, mappedFiberInds, mappedFiberThroughputs):
             # fiberInd is fiber number + 1 (zero indexed)
@@ -194,7 +307,7 @@ class PlPlugMap(object):
         # previousDirectory, filename = os.path.split(self.plPlugMap.filename)
         # determine any existing scans
         globStr = os.path.join(writeDir, "plPlugMapM-%i-%i-*.par"%(self.plateID, mjd))
-        print("globStr", globStr)
+        # print("globStr", globStr)
         nExisting = glob.glob(globStr)
         # number this scan accordingly
         scanNum = len(nExisting) + 1
@@ -261,8 +374,9 @@ class FocalSurfaceSolver(object):
         self.measXPos, self.measYPos = self.initialMeasTransforms()
         self.fitTransRotScale()
         self.matchMeasToPlPlugMap(self.measXPos, self.measYPos) # sets attriubte plPlugMapInds
-        throughputList = self.getThroughputList()
-        self.plPlugMap.enterMappedData(self.measPosInds, throughputList, self.plPlugMapInds)
+        # throughputList = self.getThroughputList()
+        # self.plPlugMap.enterMappedData(self.measPosInds, throughputList, self.plPlugMapInds)
+        self.plPlugMap.enterMappedData(self.detectedFiberList, self.plPlugMapInds)
         self.plPlugMap.writeMe(scanDir, 55555)
         self.plPlugMap.plotMissing()
 
@@ -275,12 +389,20 @@ class FocalSurfaceSolver(object):
         # focal positions
         # for initial rough scale and x,y tranlation fitting to
         # measured data
-        measXPos, measYPos = self.getMeasuredCenters()
+        # return x,y coordinate list for detections
+        # "centroid" detection by weighted counts..
+        detectionCenters = numpy.asarray([detection.xyCtr for detection in self.detectedFiberList])
+        # for detectedFiber in self.detectedFiberList:
+        #     xyCenters = [numpy.asarray(xyCenter) for xyCenter in detectedFiber.xyCtrs]
+        #     counts = detectedFiber.counts
+        #     detectionCenters.append(numpy.average(xyCenters, axis=0, weights=counts))
+        # detectionCenters = numpy.asarray(detectionCenters)
+        xPos, yPos = detectionCenters[:,0], detectionCenters[:,1]
         # pyguide convention +y goes down the image.  this is bad, flip it here
         # for matching to the plPlugMap focal values
         # also determine the rough plate center, averaging x and y
-        measXPos = measXPos - numpy.mean(measXPos)
-        measYPos = -1*(measYPos - numpy.mean(measYPos))
+        measXPos = xPos - numpy.mean(xPos)
+        measYPos = -1*(yPos - numpy.mean(yPos))
         # measYPos = measYPos - numpy.mean(measYPos)
         # in polar coords..
         measR = numpy.sqrt(measXPos**2+measYPos**2)
@@ -367,17 +489,17 @@ class FocalSurfaceSolver(object):
             y = r * numpy.sin(theta+2*numpy.pi)
         return x, y
 
-    def getMeasuredCenters(self):
-        # return x,y coordinate list for detections
-        # "centroid" detection by weighted counts..
-        detectionCenters = []
-        for detectedFiber in self.detectedFiberList:
-            xyCenters = [numpy.asarray(xyCenter) for xyCenter in detectedFiber.xyCtrs]
-            counts = detectedFiber.counts
-            detectionCenters.append(numpy.average(xyCenters, axis=0, weights=counts))
-        detectionCenters = numpy.asarray(detectionCenters)
-        xPos, yPos = detectionCenters[:,0], detectionCenters[:,1]
-        return xPos, yPos
+    # def getMeasuredCenters(self):
+    #     # return x,y coordinate list for detections
+    #     # "centroid" detection by weighted counts..
+    #     detectionCenters = numpy.asarray([detection.xyCtr for detection in self.detectedFiberList])
+    #     # for detectedFiber in self.detectedFiberList:
+    #     #     xyCenters = [numpy.asarray(xyCenter) for xyCenter in detectedFiber.xyCtrs]
+    #     #     counts = detectedFiber.counts
+    #     #     detectionCenters.append(numpy.average(xyCenters, axis=0, weights=counts))
+    #     # detectionCenters = numpy.asarray(detectionCenters)
+    #     xPos, yPos = detectionCenters[:,0], detectionCenters[:,1]
+    #     return xPos, yPos
 
     def matchMeasToPlPlugMap(self, xArray, yArray, currentCall=0, maxCalls=10, previousSolution=None):
         """Match measured positions to
@@ -416,9 +538,12 @@ class FocalSurfaceSolver(object):
         if len(plPlugMapInds) == len(xArray) or currentCall == maxCalls:
             # every match found, we're done!
             self.plPlugMapInds = plPlugMapInds
-            self.measPosInds = measPosInds
+            # self.measPosInds = measPosInds
             self.measXPos = xArray
             self.measYpos = yArray
+            for detectedFiber,x,y,plInd in itertools.izip(self.detectedFiberList, xArray, yArray, plPlugMapInds):
+                detectedFiber.setPlPlugObjInd(plInd)
+                detectedFiber.setFocalPos([x,y])
             return
 
         # determine exact transrotscale solution now that we have (at least) some robust matches.

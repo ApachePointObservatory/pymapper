@@ -2,6 +2,8 @@
 """
 from __future__ import division, absolute_import
 
+from functools import partial
+
 import argparse
 import time
 
@@ -15,7 +17,8 @@ from twisted.internet import reactor
 
 from sdss.utilities.astrodatetime import datetime
 
-from .camera import Camera, sortDetections, IMGBASENAME, IMGEXTENSION, getScanParams, pickleDetectionList, plotDetectionsVsSlitPos
+from .camera import Camera, sortDetections, IMGBASENAME, IMGEXTENSION, getScanParams, \
+    pickleDetectionList, unpickleCentroids, plotDetectionsVsSlitPos, plt
 # from .imgProcess import DetectedFiberList
 from .motor import MotorController
 from .fiberAssign import SlitheadSolver, FocalSurfaceSolver
@@ -106,11 +109,43 @@ def configureLogging(scanDir, overwrite=True):
     root.addHandler(ch)
     return logfile
 
-def reprocess(args):
+def _solvePlate(scanDir, plateID, plot=False, plugMapPath=None):
+    centroidList = unpickleCentroids(scanDir)
+    detectedFiberList = sortDetections(centroidList, plot=plot)
+    pickleDetectionList(detectedFiberList, scanDir)
+    plotDetectionsVsSlitPos(scanDir)
+    shs = SlitheadSolver(detectedFiberList, centroidList)
+    plt.figure()
+    plt.plot(shs.detMotorPos, shs.normalizedFlux, '-ok')
+    plt.plot(shs.modeledMotorPos, shs.modeledFluxes, '-or')
+    plt.show()
+    # shs.getOffsetAndScale()
+    shs.matchDetections()
+    print("missing fibers: ")
+    for fiber in shs.missingFibers:
+        print("fiber %i"%fiber)
+    print("slit match rms: %.2f"%shs.rms)
+    if plugMapPath is None:
+        plugMapPath = pathPlugMapP(plateID)
+    print("plugmap path", plugMapPath)
+    assert os.path.exists(plugMapPath)
+    fss = FocalSurfaceSolver(detectedFiberList, plugMapPath, scanDir)
+
+def resolvePlate(args):
+    if args.scanDir is None:
+        raise RuntimeError("Must specify --scanDir with --resolvePlate")
+    baseDir = os.path.abspath(args.rootDir)
+    scanDir = os.path.join(baseDir, args.scanDir)
+    if not os.path.exists(scanDir):
+        raise RuntimeError("Scan directory doesn't exist: %s"%scanDir)
+    _solvePlate(scanDir, args.plateID, plot=args.plotDetections, plugMapPath=args.plPlugMap)
+
+
+def reprocessImgs(args):
     # get all relative information
     # from existing log file
     if args.scanDir is None:
-        raise RuntimeError("Must specify --scanDir with --reprocess")
+        raise RuntimeError("Must specify --scanDir with --reprocessImgs")
     baseDir = os.path.abspath(args.rootDir)
     scanDir = os.path.join(baseDir, args.scanDir)
     if not os.path.exists(scanDir):
@@ -122,35 +157,20 @@ def reprocess(args):
     logfile = configureLogging(scanDir, overwrite=False)
     print("reprocessing images in %s"%scanDir)
     # determine previous scan params
-    scanParams = getScanParams(logfile)
-    startPos = scanParams["start"]
-    endPos = scanParams["end"]
-    scanSpeed = scanParams["speed"]
+    try:
+        scanParams = getScanParams(logfile)
+        startPos = scanParams["start"]
+        endPos = scanParams["end"]
+        scanSpeed = scanParams["speed"]
+    except:
+        print("coldn't parse logfile using defaults")
+        startPos = 24
+        endPos = 134
+        scanSpeed = 0.6
     # create directory to hold camera images
     # note all previous images will be removed if image dir is not empty
     camera = Camera(scanDir, startPos, scanSpeed)
-    def solvePlate():
-        # load the (previously pickled centroid list)
-        print("sorting detections. makePlots=%s"%str(args.makePlots))
-        detectedFiberList = sortDetections(camera.centroidList, plot=args.makePlots)
-        # pickle and save the detection list
-        pickleDetectionList(detectedFiberList, scanDir)
-        print("scan finished.")
-        print("found %i fibers"%len(detectedFiberList))
-        nImages = len(camera.getAllImgFiles)
-        scanTime = abs(endPos - startPos)/float(scanSpeed)
-        fps = nImages / scanTime
-        print("%i images taken, FPS: %.4f"%(nImages, fps))
-        # not yet ready to solve plate:
-        print("correlating fiber positions on slit")
-        plotDetectionsVsSlitPos(scanDir)
-        shs = SlitheadSolver(detectedFiberList)
-        shs.getOffsetAndScale()
-        shs.matchDetections()
-        plugMapPath = pathPlugMapP(args.plateID)
-        print("plugmap path", plugMapPath)
-        assert os.path.exists(plugMapPath)
-        fss = FocalSurfaceSolver(detectedFiberList, plugMapPath)
+    solvePlate = partial(_solvePlate, scanDir=scanDir, plateID=args.plateID, plot=args.plotDetections, plugMapPath=args.plPlugMap)
     camera.doneProcessingCallback(solvePlate)
     camera.reprocessImages()
 
@@ -159,8 +179,6 @@ def runScan(args):
     """Move motor, take images, etc
     """
     tstart = time.time()
-    if args.plateID is None:
-        raise RuntimeError("Must specify --plateID")
     baseDir = os.path.abspath(args.rootDir)
         # baseDir doesn't exist
     # verify base directory is ok
@@ -262,63 +280,14 @@ def runScan(args):
 
     # set up callback chains for mapping process
 
-    def stopCamera():
-        print("stopCamera")
-        # motor is done scanning, kill camera
-        camera.stopAcquisition()
-
-    def moveMotor():
-        # camera is acquiring begin moving motor/laser
-        print("moveMotor")
-        motorController.scan(callFunc=stopCamera)
-
-    def startCamera():
-        # motor is ready to move, begin snapping pics
-        print("startCamera")
-        camera.beginAcquisition(callFunc=moveMotor)
-
-    def solvePlate():
-        # load the (previously pickled centroid list)
-        print("sorting detections. makePlots=%s"%str(args.makePlots))
-        detectedFiberList = sortDetections(camera.centroidList, plot=args.makePlots)
-        # pickle and save the detection list
-        pickleDetectionList(detectedFiberList, scanDir)
-        print("scan finished.")
-        print("found %i fibers"%len(detectedFiberList))
-        nImages = len(glob.glob(os.path.join(scanDir, "*.bmp")))
-        scanTime = abs(args.endPos - args.startPos)/float(args.scanSpeed)
-        fps = nImages / scanTime
-        print("%i images taken, FPS: %.4f"%(nImages, fps))
-        plotDetectionsVsSlitPos(scanDir)
-        shs = SlitheadSolver(detectedFiberList)
-        shs.getOffsetAndScale()
-        shs.matchDetections()
-        print("missing fibers: ")
-        for fiber in shs.missingFibers:
-            print("fiber %i"%fiber)
-        print("slit match rms: %.2f"%shs.rms)
-
-        plugMapPath = pathPlugMapP(args.plateID)
-        print("plugmap path", plugMapPath)
-        assert os.path.exists(plugMapPath)
-        fss = FocalSurfaceSolver(detectedFiberList, plugMapPath, scanDir)
-        print("total time for map: %2.f"%(time.time()-tstart))
-
+    moveMotor = partial(motorController.scan, callFunc=camera.stopAcquisition)
+    beginImgAcquisition = partial(camera.beginAcquisition, callFunc=moveMotor)
+    solvePlate = partial(_solvePlate, scanDir=scanDir, plateID=args.plateID, plot=args.plotDetections, plugMapPath=args.plPlugMap)
     camera.doneProcessingCallback(solvePlate)
-
-    motorController.addReadyCallback(startCamera)
-    # hand fiber detection routine to the camera, so it is called
-    # when any new frame is available
-    # camera.addProcImageCall(detectedFiberList.processImage)
-    # connecting to the motor starts it all off
+    motorController.addReadyCallback(beginImgAcquisition)
     motorController.connect()
     reactor.run()
 
- #   import pickle
- #   pkl = open(os.path.join(imageDir, "detectionList.pkl"), "rb")
- #   detectedFiberList = pickle.load(pkl)
- #   pkl.close()
- #   solvePlate(detectedFiberList)
 
 def main(argv=None):
     global baseDir
@@ -327,7 +296,7 @@ def main(argv=None):
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         description="Run the plate mapper."
         )
-    parser.add_argument("--plateID", type=int, required=False, help="Plate ID")
+    parser.add_argument("--plateID", type=int, required=True, help="Plate ID")
     parser.add_argument("--scanDir", required=False, help="""Directory in which to put scan.
                             If not provided, one will be automatically determined"""
                             )
@@ -339,13 +308,16 @@ def main(argv=None):
         help="end of scan motor position (mm).")
     parser.add_argument("--scanSpeed", required=False, type=float, default=0.6,
         help="speed at which motor scans (mm/sec).")
-    parser.add_argument("--makePlots", action="store_true", default=False, help="if present create png plots with circled dectections, takes much longer." )
-    parser.add_argument("--solve", action="store_true", default=False, help="if present, solve plate matching fibers to holes.")
-    parser.add_argument("--reprocess", action="store_true", default=False, help="if present, reprocess the raw images.")
+    parser.add_argument("--plotDetections", action="store_true", default=False, help="if present create png plots with circled dectections, takes much longer." )
+    parser.add_argument("--resolvePlate", action="store_true", default=False, help="if present, solve plate matching fibers to holes, from pickled img process output.")
+    parser.add_argument("--reprocessImgs", action="store_true", default=False, help="if present, reprocess the raw images.")
+    parser.add_argument("--plPlugMap", required=False, help="path to plPlugMap file, if not present try to get it from $PLATELIST_DIR")
     args = parser.parse_args()
 
-    if args.reprocess:
-        reprocess(args)
+    if args.reprocessImgs:
+        reprocessImgs(args)
+    elif args.resolvePlate:
+        resolvePlate(args)
     else:
         runScan(args)
 
@@ -383,4 +355,42 @@ if __name__ == "__main__":
             break
         scanNum += 1
     print("scanNumber %i"%scanNum)
+
+
+
+
+
+    def solvePlate():
+        # load the (previously pickled centroid list)
+        print("sorting detections. plotDetections=%s"%str(args.plotDetections))
+        detectedFiberList = sortDetections(camera.centroidList, plot=args.plotDetections)
+        # pickle and save the detection list
+        pickleDetectionList(detectedFiberList, scanDir)
+        print("scan finished.")
+        print("found %i fibers"%len(detectedFiberList))
+        nImages = len(glob.glob(os.path.join(scanDir, "*.bmp")))
+        scanTime = abs(args.endPos - args.startPos)/float(args.scanSpeed)
+        fps = nImages / scanTime
+        print("%i images taken, FPS: %.4f"%(nImages, fps))
+        plotDetectionsVsSlitPos(scanDir)
+        shs = SlitheadSolver(detectedFiberList)
+        shs.getOffsetAndScale()
+        shs.matchDetections()
+        print("missing fibers: ")
+        for fiber in shs.missingFibers:
+            print("fiber %i"%fiber)
+        print("slit match rms: %.2f"%shs.rms)
+
+        plugMapPath = pathPlugMapP(args.plateID)
+        print("plugmap path", plugMapPath)
+        assert os.path.exists(plugMapPath)
+        fss = FocalSurfaceSolver(detectedFiberList, plugMapPath, scanDir)
+        print("total time for map: %2.f"%(time.time()-tstart))
+
+
+
+
+
+
+
 """
