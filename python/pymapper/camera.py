@@ -10,9 +10,7 @@ import time
 import logging
 import traceback
 from multiprocessing import Pool
-import matplotlib
-# matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+
 import shutil
 
 import scipy.ndimage
@@ -71,7 +69,10 @@ MINSEP = 3.5 # min between fibers separation in pixels
 CCDInfo = PyGuide.CCDInfo(bias=1, readNoise=0, ccdGain=1)
 # self.imageDir = os.path.join(os.environ["PYMAPPER_DIR"], "tests")
 
-TZERO = None
+# globals requred due to multiprocessing breaking
+# when calling class methods rather than functions
+# accepting a single argument (processImage)
+TZERO = None # time stamp of first image
 MOTORSPEED = None
 MOTORSTART = None
 
@@ -189,11 +190,8 @@ class Camera(object):
     def __init__(self, imageDir, motorStart, motorSpeed):
         global MOTORSTART
         global MOTORSPEED
-        self.motorStart = motorStart
-        self.motorSpeed = motorSpeed
-        MOTORSTART = self.motorStart
-        MOTORSPEED = self.motorSpeed
-        self.tZero = None # timestamp of the first image
+        MOTORSTART = motorStart
+        MOTORSPEED = motorSpeed
         self.acquiring = False
         self.process = None
         self.imageDir = imageDir
@@ -263,8 +261,7 @@ class Camera(object):
         if os.path.exists(self.getNthFile(1)):
             print("acquisition started")
             # set the zeroth timestamp for determining motor position for each image
-            self.tZero = os.path.getmtime(self.getNthFile(1))
-            TZERO = self.tZero
+            TZERO = os.path.getmtime(self.getNthFile(1))
             if self.acquisitionCB is not None:
                 print("firing acquisition callback")
                 reactor.callLater(0., self.acquisitionCB)
@@ -275,12 +272,6 @@ class Camera(object):
         else:
             # first image not seen yet try again
             reactor.callLater(0., self.waitForFirstImage)
-
-    # def multiprocessNext(self, centroidList):
-    #     print("multiprocessNext")
-    #     self.centroidList.extend(centroidList)
-    #     self.multiprocessImageLoop()
-        # reactor.callLater(0., self.multiprocessImageLoop)
 
 
     def reprocessImages(self):
@@ -315,48 +306,6 @@ class Camera(object):
                 # camera is done, no remaining files to process
                 self.multiprocessDone()
 
-    # def _multiprocessImage(self, imageFileList, callFunc, block=False):
-    #     # may want to try map_async
-    #     print("multiprocess image")
-    #     p = Pool(5)
-    #     if block:
-    #         output = p.map(processImage, imageFileList)
-    #         callFunc(output)
-    #         return None
-    #     else:
-    #         return p.map_async(processImage, imageFileList, callback=callFunc)
-
-    # def _processImage(self, imageFile):
-    #     """! Process a single image
-
-    #     @param[in] imageFile. String
-
-    #     """
-    #     print("processing img: ", os.path.split(imageFile)[-1])
-    #     timestamp = os.path.getmtime(imageFile) - self.tZero
-    #     frame = int(imageFile.split(IMGBASENAME)[-1].split(".")[0])
-    #     imgData = scipy.ndimage.imread(imageFile)
-    #     counts = None
-    #     xyCtr = None
-    #     rad = None
-    #     try:
-    #         pyGuideCentroids = PyGuide.findStars(imgData, None, None, CCDInfo)[0]
-    #         # did we get any centroids?
-    #         if pyGuideCentroids:
-    #             counts = pyGuideCentroids[0].counts
-    #             xyCtr = pyGuideCentroids[0].xyCtr
-    #             rad = pyGuideCentroids[0].rad
-    #     except Exception:
-    #         print("some issue with pyguide on img (skipping): ", imageFile)
-    #         traceback.print_exc()
-    #     return dict((
-    #                     ("imageFile", imageFile),
-    #                     ("counts", counts),
-    #                     ("xyCtr", xyCtr),
-    #                     ("rad", rad),
-    #                     ("motorPos", self.motorStart + self.motorSpeed*timestamp),
-    #                     ("frame", frame),
-    #                 ))
 
 def multiprocessImage(imageFileList, callFunc=None, block=False):
     # may want to try map_async

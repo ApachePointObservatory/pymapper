@@ -18,7 +18,7 @@ from twisted.internet import reactor
 from sdss.utilities.astrodatetime import datetime
 
 from .camera import Camera, sortDetections, IMGBASENAME, IMGEXTENSION, getScanParams, \
-    pickleDetectionList, unpickleCentroids, plotDetectionsVsSlitPos, plt
+    pickleDetectionList, unpickleCentroids, plotDetectionsVsSlitPos
 # from .imgProcess import DetectedFiberList
 from .motor import MotorController
 from .fiberAssign import SlitheadSolver, FocalSurfaceSolver

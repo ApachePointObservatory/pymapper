@@ -19,9 +19,6 @@ from scipy.optimize import fmin
 from scipy.optimize import minimize_scalar
 import scipy.optimize
 
-import matplotlib
-# matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 
 from sdss.utilities.yanny import yanny
 from fitPlugPlateMeas.fitData import TransRotScaleModel, ModelFit
@@ -57,11 +54,20 @@ class SlitheadSolver(object):
         self.centroidList = centroidList
         self.nomFiberNum, self.nomMotorPos = self.parseFiberPosFile(fiberslitposFile)
         self.hackNomPos()
-        # self.detMotorPos, self.detCounts = self.generateDetectionTrace()
-        # self.detMotorPos = [det.motorPos for det in self.detectedFiberList]
-        self.detMotorPos, self.normalizedFlux = self.generateDetectionTrace()
-        self.modeledMotorPos = numpy.arange(self.nomMotorPos[0]-4, self.nomMotorPos[-1]+4, FIBERDIAMETER/4)
-        self.modeledFluxes = [self.fluxFromMotorPos(motorPos) for motorPos in self.modeledMotorPos]
+        # det motor pos is motor position at each frame
+        # normailzed flux is counts in each detection normalized by
+        # total counts in the detection (so the sum of counts in any detection is 1)
+        # normalized flux only contians counts that belong to a detection
+        # raw fluxes is just the sum of counts in each frame.
+        self.detMotorPos, self.normalizedFlux, self.rawFluxes = self.generateDetectionTrace()
+        # self.modeledMotorPos = numpy.arange(self.nomMotorPos[0]-4, self.nomMotorPos[-1]+4, FIBERDIAMETER/4)
+        # self.modeledFluxes = [self.fluxFromMotorPos(motorPos) for motorPos in self.modeledMotorPos]
+
+        # rescaled motor positions are set in correlate
+        # they are used for the actual matching of detected fibers to the model
+        # of fibers on the slit. rescaled motor positions are
+        # self.detMotorPos with the scale and offset applied
+        self.rescaledMotorPositions = None
         self.correlate()
 
     def hackNomPos(self):
@@ -78,17 +84,21 @@ class SlitheadSolver(object):
             cout = numpy.correlate(self.normalizedFlux, modeledFluxes, mode="full")
             maxInd = numpy.argmax(cout)
             maxVal = cout[maxInd]
-            shift = maxInd - int(len(cout)/2)
+            shift = maxInd - int(len(cout)/2) # shift is in units of frames
             if maxCor is None or maxVal > maxCor:
                 maxCor = maxVal
                 maxShift = shift
                 maxScale = scale
                 rescaledMotorPositions = modeledMotorPos
         # print("shift of %i for scale %.8f"%(maxShift, maxScale))
-        self.offset = maxShift * numpy.mean(numpy.diff(self.detMotorPos*maxScale))
+        self.offset = maxShift * numpy.mean(numpy.diff(self.detMotorPos*maxScale)) # convert frames to motor pos
         print("offset: %.4f"%self.offset)
         self.scale = maxScale
         self.rescaledMotorPositions = rescaledMotorPositions + self.offset
+
+
+    def plotSolution(self):
+
 
     def parseFiberPosFile(self, fiberslitposFile):
         fiberNums = []
@@ -106,6 +116,7 @@ class SlitheadSolver(object):
 
     def generateDetectionTrace(self):
         normalizedFlux = numpy.zeros(self.centroidList[-1]["frame"])
+        rawFlux = numpy.arrray([cent["totalCounts"] for cent in self.centroidList])
         detMotorPos = numpy.array([cent["motorPos"] for cent in self.centroidList])
         for detection in self.detectedFiberList:
             # normalize all counts to sum to 1
@@ -113,7 +124,7 @@ class SlitheadSolver(object):
             detSum = numpy.sum(detection.counts)
             for frame, counts in itertools.izip(detection.frames, detection.counts):
                 normalizedFlux[frame-1] = counts/detSum
-        return detMotorPos, normalizedFlux
+        return detMotorPos, normalizedFlux, rawFlux
 
 
     def fluxFromMotorPos(self, motorPos):
@@ -126,113 +137,6 @@ class SlitheadSolver(object):
         # thats the minimum distance to the nearest gaussian (or expected position)
         return 0.5*numpy.exp(-1*(minDist)**2/float(FIBERDIAMETER**2))
 
-    # def computeEnergy(self, x):
-    #     """x[0] is offset x[1] is scale
-    #     """
-    #     offset = x[0]
-    #     scale = x[1]
-    #     totalEnergy = 0
-    #     for motorPos, motorCounts in itertools.izip(self.detMotorPos, self.detCounts):
-    #         totalEnergy += self.fluxFromMotorPos(motorPos, motorCounts, offset, scale)
-    #     return -1 * totalEnergy
-
-    def _getOffsetAndScale(self):
-              # from IDL:
-              # scale_best = 0
-              # shift_best = 0
-              # for scale=1-0.002, 1+0.002, 0.0005 do begin
-              #    yvec1 = maptimes(mcen1*scale, camparam.msigma, motorvec=motorvec)
-              #    cc = c_correlate(yvec1, fluxvec1, lags)
-              #    cmax = max(cc, imax)
-              #    if (cmax GT cc_best) then begin
-              #       cc_best = cmax
-              #       scale_best = scale
-              #       shift_best = lags[imax]
-        bestScale = None
-        bestOffset = None
-        bestEnergy = None
-        scales = numpy.arange(1-0.002, 1+0.002, 0.0005)
-        offsets = numpy.arange(-5,5,FIBERDIAMETER/4.)
-        print("max offset:", offsets[-1])
-        scales = [1]
-        offsets = [0]
-        # offsets = numpy.arange(-FIBERDIAMETER/2., FIBERDIAMETER/2., FIBERDIAMETER/100.)
-        for scale in scales:
-            print("scale", scale)
-            for offset in offsets:
-                energy = self.computeEnergy([offset, scale])
-                if bestEnergy is None or energy < bestEnergy:
-                    bestEnergy = energy
-                    bestScale = scale
-                    bestOffset = offset
-        # xInit = [0, 1]
-        # # get the "modeled" flux for each detected motor position
-        # modeledCounts = numpy.asarray([self.fluxFromMotorPos(mp, counts) for mp, counts in itertools.izip(self.detMotorPos, self.detCounts)])
-        self.offset = bestOffset
-        self.scale = bestScale
-
-
-    # def offsetScaleMin(self, coeffs):
-    #     """coeffs = [scale, offset]
-    #     """
-    #     scale, offset = coeffs
-    #     print("scale, off %.4f, %.4f "%(scale, offset))
-    #     # scale and offset measured fiber positions compute difference
-    #     # with model
-    #     measuredFlux = numpy.asarray([self.fluxFromMotorPos(motorPos*scale+offset) for motorPos in self.detMotorPos])
-    #     # modeled flux is ones at each motor pos
-    #     modeledFlux = numpy.ones(len(measuredFlux))
-    #     errSqrd = (measuredFlux-modeledFlux)**2
-    #     return errSqrd
-
-    def offsetScaleMin(self, offset):
-        """coeffs = [scale, offset]
-        """
-        # scale and offset measured fiber positions compute difference
-        # with model
-        # print("offset", offset)
-        measuredDist = []
-        for motorPos in [df.motorPos for df in self.detectedFiberList]:
-            measuredDist.append(numpy.sum(numpy.abs(numpy.subtract(self.nomMotorPos, motorPos+offset[0]))))
-        # val = numpy.sum(measuredDist)
-        # print("scale, off, val %.4f, %.4f, %.4f "%(scale, offset, val))
-        return measuredDist
-
-    def offsetScaleMin2(self, offset, scale):
-        """coeffs = [scale, offset]
-        """
-        # scale and offset measured fiber positions compute difference
-        # with model
-        # print("offset", offset)
-        measuredDist = []
-        for motorPos in [df.motorPos for df in self.detectedFiberList]:
-            measuredDist.append(numpy.sum(numpy.abs(numpy.subtract(self.nomMotorPos, motorPos*scale+offset[0]))))
-        # val = numpy.sum(measuredDist)
-        # print("scale, off, val %.4f, %.4f, %.4f "%(scale, offset, val))
-        return numpy.sum(measuredDist)
-
-    # def getOffsetAndScale(self, doRaise=True, maxFuncEval=5000):
-    #     # initialCoeffs = numpy.asarray([1, 0]) # scale =1 offset 0
-    #     # fitCoeffs, status = scipy.optimize.leastsq(
-    #     #     self.offsetScaleMin,
-    #     #     [0],
-    #     #     # maxfev = None,
-    #     # )
-    #     # if status not in range(5):
-    #     #     if doRaise:
-    #     #         raise RuntimeError("fit failed")
-    #     bestF = None
-    #     bestOffset = None
-    #     bestScale = None
-    #     for scale in numpy.arange(1-0.002, 1+0.002, 0.0005):
-    #         x, fopt = fmin(self.offsetScaleMin2, [0], args=(scale,), full_output=1)[:2]
-    #         # print("fit coeffs", fitCoeffs)
-    #         if bestF is None or fopt < bestF:
-    #             bestF = fopt
-    #             bestOffset = x[0]
-    #             bestScale = scale
-    #     self.offset = bestOffset
-    #     self.scale = bestScale
 
     def matchDetections(self):
         # scale the measured motor positions of by the scaling
