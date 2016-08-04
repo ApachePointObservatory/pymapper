@@ -125,7 +125,7 @@ class SlitheadSolver(object):
         nfn = os.path.join(scanDir, "slitheadSolution.png")
         plt.legend(
             [slitModel, scaledRaw, scaledDetections, unscaledCenters, scaledCenters],
-            ["Gaussian Slit Model", "Scaled, Thresholded, Normed Total Counts In Frame", "Scaled, Normed Detection Counts", "Unscaled Detection Centers", "Scaled Detection Centers"],
+            ["Gaussian Slit Model", "Fit, Thresholded, Normed Total Counts In Frame", "Fit, Normed Detection Counts", "Unfit Detection Centers", "Fit Detection Centers"],
             fontsize=30,
             # loc = "upper center",
             )
@@ -133,9 +133,10 @@ class SlitheadSolver(object):
         plt.ylabel("Normalized Counts")
         meanX = numpy.mean(self.rescaledMotorPositions)
         maxY = numpy.max(rawFluxes)
-        plt.text(meanX, maxY - 0.05, "RMS: %.6f"%self.rms, horizontalalignment="center", fontsize=30)
+        plt.text(meanX, maxY - 0.1, "RMS after scale/offeset fitting: %.6f"%self.rms, horizontalalignment="center", fontsize=30)
         missingFiberStr = ",".join([str(fiber) for fiber in self.missingFibers])
-        plt.text(meanX, maxY - 0.1, "Missing Fiber Numbers: %s"%missingFiberStr, horizontalalignment="center", fontsize=30)
+        plt.text(meanX, maxY - 0.15, "Missing Fiber Numbers: %s"%missingFiberStr, horizontalalignment="center", fontsize=30)
+        plt.text(meanX, maxY - 0.05, "Fit -- Scale: %.4f Offset: %.4f (mm)"%(self.scale, self.offset), horizontalalignment="center", fontsize=30)
         fig.savefig(nfn); plt.close(fig)
         # plt.show()
 
@@ -372,22 +373,22 @@ class FocalSurfaceSolver(object):
         """Use a minimizer to get translation, rotation and scale close enough
         to determine (hopefully many) robust matches.
         """
-        self.plot(self.measXPos, self.measYPos)
+        # self.plot(self.measXPos, self.measYPos)
         # step 1 rough fit tranlation
         transx, transy = fmin(self.minimizeTranslation, [0,0], args=(FWHMCOARSE,))
-        self.plot(self.measXPos-transx, self.measYPos-transy)
+        # self.plot(self.measXPos-transx, self.measYPos-transy)
 
         # step 2 rough fig scale and rot
         rot, scale = fmin(self.minimizeRotScale, [0,1], args=(transx, transy, FWHMCOARSE))
         x, y = self.applyTransRotScale(self.measXPos, self.measYPos, transx, transy, rot, scale)
-        self.plot(x, y)
+        # self.plot(x, y)
         print(transx, transy, rot, scale)
 
         # step 3, re fit trans rot scale together, with tighter gaussians around the target points
         transx, transy, rot, scale = fmin(self.minimizeTransRotScale, [transx, transy, rot, scale], args=(FWHMFINE,))
         print(transx, transy, rot, scale)
         self.measXPos, self.measYPos = self.applyTransRotScale(self.measXPos, self.measYPos, transx, transy, rot, scale)
-        self.plot(self.measXPos, self.measYPos)
+        # self.plot(self.measXPos, self.measYPos)
 
     def minimizeTranslation(self, transxy, fwhm):
         transx, transy = transxy
@@ -509,7 +510,7 @@ class FocalSurfaceSolver(object):
         newPositions = fitTransRotScale.model.apply(xyArray, doInverse=True)
         xArray = newPositions[:,0]
         yArray = newPositions[:,1]
-        self.plot(xArray, yArray)
+        # self.plot(xArray, yArray)
         self.matchMeasToPlPlugMap(xArray, yArray, currentCall=currentCall+1, previousSolution=transRotScaleSolution)
 
 
