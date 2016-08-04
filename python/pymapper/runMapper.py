@@ -23,6 +23,8 @@ from .camera import Camera, sortDetections, IMGBASENAME, IMGEXTENSION, getScanPa
 from .motor import MotorController
 from .fiberAssign import SlitheadSolver, FocalSurfaceSolver
 
+from . import plt
+
 homedir = os.path.expanduser("~")
 baseDir = os.path.join(homedir, "Documents/Camera_test")
 baseName = "test"
@@ -113,18 +115,14 @@ def _solvePlate(scanDir, plateID, plot=False, plugMapPath=None):
     centroidList = unpickleCentroids(scanDir)
     detectedFiberList = sortDetections(centroidList, plot=plot)
     pickleDetectionList(detectedFiberList, scanDir)
-    plotDetectionsVsSlitPos(scanDir)
+    # plotDetectionsVsSlitPos(scanDir)
     shs = SlitheadSolver(detectedFiberList, centroidList)
-    plt.figure()
-    plt.plot(shs.detMotorPos, shs.normalizedFlux, '-ok')
-    plt.plot(shs.modeledMotorPos, shs.modeledFluxes, '-or')
-    plt.show()
-    # shs.getOffsetAndScale()
     shs.matchDetections()
     print("missing fibers: ")
     for fiber in shs.missingFibers:
         print("fiber %i"%fiber)
-    print("slit match rms: %.2f"%shs.rms)
+    print("slit match rms: %.8f"%shs.rms)
+    shs.plotSolution(scanDir)
     if plugMapPath is None:
         plugMapPath = pathPlugMapP(plateID)
     print("plugmap path", plugMapPath)

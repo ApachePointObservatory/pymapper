@@ -22,6 +22,8 @@ import PyGuide
 
 from twisted.internet import reactor
 
+from . import plt
+
 # how to deal with hot pixels?
 """
 from IDL:
@@ -63,6 +65,7 @@ EXE = "AsynchronousGrabWrite"
 IMGBASENAME = "img"
 IMGEXTENSION = "bmp"
 MINCOUNTS = 0
+ROUGH_THRESH = 8 # for filtering out pixels going into "totalCounts" in each frame
 MINSEP = 3.5 # min between fibers separation in pixels
 
 # CCDInfo = PyGuide.CCDInfo(bias=50, readNoise=10, ccdGain=1)
@@ -335,7 +338,11 @@ def processImage(imageFile):
         counts = None
         xyCtr = None
         rad = None
-        totalCounts = numpy.sum(imgData)
+        flatImg = imgData.flatten()
+        thresh = flatImg[numpy.nonzero(flatImg>ROUGH_THRESH)]
+        # print("median %.4f thresh %.4f  %i pixels over thresh"%(medianValue, sigma, len(thresh)))
+        totalCounts = numpy.sum(thresh)
+        # put some filtering here
         try:
             pyGuideCentroids = PyGuide.findStars(imgData, None, None, CCDInfo)[0]
             # did we get any centroids?

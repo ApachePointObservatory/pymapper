@@ -23,11 +23,9 @@ import scipy.optimize
 from sdss.utilities.yanny import yanny
 from fitPlugPlateMeas.fitData import TransRotScaleModel, ModelFit
 
-# from .measureSlitPos import getMeasuredFiberPositions
+from . import plt
 
-# spacing between blocks (measured empirically), units are adjacent fiber spacing
-# turns out to be better to just use the same spacing for every block...
-# BlockSpaceMultiplier = [1.928, 1.868, 1.828, 1.877, 1.910, 1.805, 1.980, 1.917, 1.887]
+# from .measureSlitPos import getMeasuredFiberPositions
 
 DEBUG = False
 # fwhm are used to build gaussians in a minimizing "energy" function
@@ -53,7 +51,7 @@ class SlitheadSolver(object):
         self.detectedFiberList = detectedFiberList
         self.centroidList = centroidList
         self.nomFiberNum, self.nomMotorPos = self.parseFiberPosFile(fiberslitposFile)
-        self.hackNomPos()
+        self.hack()
         # det motor pos is motor position at each frame
         # normailzed flux is counts in each detection normalized by
         # total counts in the detection (so the sum of counts in any detection is 1)
@@ -70,15 +68,14 @@ class SlitheadSolver(object):
         self.rescaledMotorPositions = None
         self.correlate()
 
-    def hackNomPos(self):
-        self.nomMotorPos = numpy.asarray(self.nomMotorPos) * 1.05 - 1 + 10
-
     def correlate(self):
         maxCor = None
         maxShift = None
         maxScale = None
         rescaledMotorPositions = None
-        for scale in numpy.arange(1-0.002, 1+0.002, 0.0005):
+        # for scale in numpy.arange(1-0.002, 1+0.002, 0.0005):
+        for scale in numpy.arange(0.9, 1.1, 0.0005):
+            # print("scale: ", scale)
             modeledMotorPos = self.detMotorPos * scale
             modeledFluxes = [self.fluxFromMotorPos(motorPos) for motorPos in modeledMotorPos]
             cout = numpy.correlate(self.normalizedFlux, modeledFluxes, mode="full")
@@ -92,12 +89,55 @@ class SlitheadSolver(object):
                 rescaledMotorPositions = modeledMotorPos
         # print("shift of %i for scale %.8f"%(maxShift, maxScale))
         self.offset = maxShift * numpy.mean(numpy.diff(self.detMotorPos*maxScale)) # convert frames to motor pos
-        print("offset: %.4f"%self.offset)
         self.scale = maxScale
-        self.rescaledMotorPositions = rescaledMotorPositions + self.offset
+        print("scale: %.8f offset: %.4f"%(self.scale, self.offset))
+        # self.rescaledMotorPositions = rescaledMotorPositions - self.offset
+        self.rescaledMotorPositions = numpy.asarray([cent["motorPos"] for cent in self.centroidList])*self.scale - self.offset
+        self.scaledDetections = numpy.asarray([det.motorPos for det in self.detectedFiberList])*self.scale - self.offset
+        print("got %i detections"%len(self.scaledDetections))
+
+    def hack(self):
+        self.nomMotorPos = numpy.asarray(self.nomMotorPos) * 1.05 #- 4
 
 
-    def plotSolution(self):
+    def plotSolution(self, scanDir):
+        # scale rawFluxes
+        # rawFluxes = (self.rawFluxes - numpy.median(self.rawFluxes))
+        # scale by 3/4 the max value
+        scaleValue = sorted(self.rawFluxes)[int(len(self.rawFluxes)*3/4)]
+        rawFluxes = 0.5*self.rawFluxes / scaleValue
+        modelMotorPos = numpy.arange(self.rescaledMotorPositions[0], self.rescaledMotorPositions[-1], FIBERDIAMETER/30)
+        unscaledDetections = numpy.asarray([det.motorPos for det in self.detectedFiberList])
+        fiberNums = [det.getSlitIndex() for det in self.detectedFiberList]
+        modeledFlux = [self.fluxFromMotorPos(motorPos) for motorPos in modelMotorPos]
+        fig = plt.figure(figsize=(200,30))
+        slitModel, = plt.plot(modelMotorPos, modeledFlux, '-k', alpha=0.5, linewidth=3)
+        scaledRaw, = plt.plot(self.rescaledMotorPositions, rawFluxes, '.-g', alpha=0.5, linewidth=3)
+        scaledDetections, = plt.plot(self.rescaledMotorPositions, self.normalizedFlux, '.-b', alpha=0.5, linewidth=3)
+        for unscaled, scaled in itertools.izip(unscaledDetections, self.scaledDetections):
+            # plt.plot(unscaled, 0.6, 'xr')
+            # plt.plot(scaled, 0.51, 'or')
+            plt.plot([unscaled, scaled], [.6, .51], 'r-', alpha=0.5, linewidth=2)
+        unscaledCenters, = plt.plot(unscaledDetections, 0.6*numpy.ones(len(unscaledDetections)), 'xr')
+        scaledCenters, = plt.plot(self.scaledDetections, 0.51*numpy.ones(len(self.scaledDetections)), 'or')
+        for x, fiberNum in itertools.izip(self.scaledDetections, fiberNums):
+            plt.text(x, 0.52, str(fiberNum+1), horizontalalignment='center', fontsize=8)
+        nfn = os.path.join(scanDir, "slitheadSolution.png")
+        plt.legend(
+            [slitModel, scaledRaw, scaledDetections, unscaledCenters, scaledCenters],
+            ["Gaussian Slit Model", "Scaled, Thresholded, Normed Total Counts In Frame", "Scaled, Normed Detection Counts", "Unscaled Detection Centers", "Scaled Detection Centers"],
+            fontsize=30,
+            # loc = "upper center",
+            )
+        plt.xlabel("Motor Position (mm)")
+        plt.ylabel("Normalized Counts")
+        meanX = numpy.mean(self.rescaledMotorPositions)
+        maxY = numpy.max(rawFluxes)
+        plt.text(meanX, maxY - 0.05, "RMS: %.6f"%self.rms, horizontalalignment="center", fontsize=30)
+        missingFiberStr = ",".join([str(fiber) for fiber in self.missingFibers])
+        plt.text(meanX, maxY - 0.1, "Missing Fiber Numbers: %s"%missingFiberStr, horizontalalignment="center", fontsize=30)
+        fig.savefig(nfn); plt.close(fig)
+        # plt.show()
 
 
     def parseFiberPosFile(self, fiberslitposFile):
@@ -116,7 +156,7 @@ class SlitheadSolver(object):
 
     def generateDetectionTrace(self):
         normalizedFlux = numpy.zeros(self.centroidList[-1]["frame"])
-        rawFlux = numpy.arrray([cent["totalCounts"] for cent in self.centroidList])
+        rawFlux = numpy.array([cent["totalCounts"] for cent in self.centroidList])
         detMotorPos = numpy.array([cent["motorPos"] for cent in self.centroidList])
         for detection in self.detectedFiberList:
             # normalize all counts to sum to 1
@@ -141,15 +181,15 @@ class SlitheadSolver(object):
     def matchDetections(self):
         # scale the measured motor positions of by the scaling
         # nomMatchPos = numpy.asarray(self.nomMotorPos)*self.scale + self.offset
-        measMatchPos = [detectedFiber.motorPos*self.scale + self.offset for detectedFiber in self.detectedFiberList]
+        # measMatchPos = [detectedFiber.motorPos/self.scale - self.offset for detectedFiber in self.detectedFiberList]
         inds = []
         errs = []
-        for measMotorPos in measMatchPos:
+        for measMotorPos in self.scaledDetections:
             # for each measured position find the closest match
             # to a nominal fiber (after scale and offset have been applied)
             # it is assued that the measured positions should be
             # very close to only one of the nominal positions
-            allErrs = numpy.abs(measMotorPos-self.rescaledMotorPositions)
+            allErrs = numpy.abs(measMotorPos-self.nomMotorPos)
             minInd = numpy.argmin(allErrs)
             err = allErrs[minInd]
             errs.append(err)
@@ -248,7 +288,7 @@ class PlPlugMap(object):
             xPos = self.plPlugMap["PLUGMAPOBJ"]["xFocal"][objInd]
             yPos = self.plPlugMap["PLUGMAPOBJ"]["yFocal"][objInd]
             fiberID = self.plPlugMap["PLUGMAPOBJ"]["fiberId"][objInd]
-            if fiberID == -1:
+            if fiberID < 0:
                 # fiber not found
                 marker = "x" # red x
                 color = "red"
