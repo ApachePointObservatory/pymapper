@@ -51,7 +51,7 @@ class SlitheadSolver(object):
         self.detectedFiberList = detectedFiberList
         self.centroidList = centroidList
         self.nomFiberNum, self.nomMotorPos = self.parseFiberPosFile(fiberslitposFile)
-        self.hack()
+        # self.hack()
         # det motor pos is motor position at each frame
         # normailzed flux is counts in each detection normalized by
         # total counts in the detection (so the sum of counts in any detection is 1)

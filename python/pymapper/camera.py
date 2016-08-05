@@ -333,8 +333,8 @@ def processImage(imageFile):
         global MOTORSTART
         frame = int(imageFile.split(IMGBASENAME)[-1].split(".")[0])
         imgData = scipy.ndimage.imread(imageFile)
-        # timestamp = os.path.getmtime(imageFile) - TZERO
-        timestamp = TZERO + ((frame-1)/11.) - TZERO # hack time!!!!
+        timestamp = os.path.getmtime(imageFile) - TZERO
+        # timestamp = TZERO + ((frame-1)/11.) - TZERO # hack time!!!!
         counts = None
         xyCtr = None
         rad = None
