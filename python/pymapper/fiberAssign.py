@@ -227,25 +227,27 @@ class PlPlugMap(object):
         # throughput should already be 0....do we need to check?\
         for detectedFiber in detectedFiberList:
             objInd = detectedFiber.getPlPlugObjInd()
-            plInd = self.objectInds[plInd]
+            plInd = self.objectInds[objInd]
             self.plPlugMap["PLUGMAPOBJ"]["fiberId"][plInd] = detectedFiber.getSlitIndex()
             self.plPlugMap["PLUGMAPOBJ"]["throughput"][plInd] = detectedFiber.counts
+            # paranoia!
+            assert self.plPlugMap["PLUGMAPOBJ"][plInd]["holeType"].flatten()[0] == "OBJECT"
 
-    def _enterMappedData(self, mappedFiberInds, mappedFiberThroughputs, mappedPlPlugObjInds):
-        # for fibers not found enter fiberID = -1, spectrographID = -1, and throughput = 0
-        # first set spectrograph id and fiber id to -1 for all OBJECTS
-        # self.plPlugMap["PLUGMAPOBJ"]["spectrographId"][self.objectInds] = 6
-        # self.plPlugMap["PLUGMAPOBJ"]["fiberId"][self.objectInds] = -1
-        # throughput should already be 0....do we need to check?\
-        for plInd, fiberInd, fiberThroughput in itertools.izip(mappedPlPlugObjInds, mappedFiberInds, mappedFiberThroughputs):
-            # fiberInd is fiber number + 1 (zero indexed)
-            # plInd is index based on holeType==OBJECT only (we threw away all other types)
-            # first find out what plInd index corresponds to in scope of all holes in file
-            holeInd = self.objectInds[plInd]
-            self.plPlugMap["PLUGMAPOBJ"]["spectrographId"][holeInd] = 0
-            # because of zero index add 1, because 1-16 are reserved for guide fibers begin count at 17
-            self.plPlugMap["PLUGMAPOBJ"]["fiberId"][holeInd] = fiberInd + 1 + 16
-            self.plPlugMap["PLUGMAPOBJ"]["throughput"][holeInd] = fiberThroughput
+    # def _enterMappedData(self, mappedFiberInds, mappedFiberThroughputs, mappedPlPlugObjInds):
+    #     # for fibers not found enter fiberID = -1, spectrographID = -1, and throughput = 0
+    #     # first set spectrograph id and fiber id to -1 for all OBJECTS
+    #     # self.plPlugMap["PLUGMAPOBJ"]["spectrographId"][self.objectInds] = 6
+    #     # self.plPlugMap["PLUGMAPOBJ"]["fiberId"][self.objectInds] = -1
+    #     # throughput should already be 0....do we need to check?\
+    #     for plInd, fiberInd, fiberThroughput in itertools.izip(mappedPlPlugObjInds, mappedFiberInds, mappedFiberThroughputs):
+    #         # fiberInd is fiber number + 1 (zero indexed)
+    #         # plInd is index based on holeType==OBJECT only (we threw away all other types)
+    #         # first find out what plInd index corresponds to in scope of all holes in file
+    #         holeInd = self.objectInds[plInd]
+    #         self.plPlugMap["PLUGMAPOBJ"]["spectrographId"][holeInd] = 0
+    #         # because of zero index add 1, because 1-16 are reserved for guide fibers begin count at 17
+    #         self.plPlugMap["PLUGMAPOBJ"]["fiberId"][holeInd] = fiberInd + 1 + 16
+    #         self.plPlugMap["PLUGMAPOBJ"]["throughput"][holeInd] = fiberThroughput
 
     def writeMe(self, writeDir, mjd):
         # replace plPlugMapP-XXX with plPlugMapM-XXX
@@ -264,7 +266,7 @@ class PlPlugMap(object):
     def plotMissing(self):
         tabHeight = 0.5 * MMPERINCH
         tabWidth = 0.8 * MMPERINCH
-        fig = plt.figure(figsize=(10,10))
+        fig = plt.figure(figsize=(50,50))
         plt.box(on=True)
         radLimit = PLATERADIUS + tabHeight + 10 #mm
         limits = (-1*radLimit, radLimit)
@@ -298,6 +300,7 @@ class PlPlugMap(object):
                 marker = "o" #circle
                 color = "black"
             plt.plot(xPos, yPos, marker=marker, color=color, fillstyle="none", mew=2)
+            # plt.text(xPos*-1, yPos, str(objInd[0]+1), horizontalalignment="center", fontsize=10)
         # plt.show(block=True)
         figname = os.path.join(self.scanDir, "unplugged.png")
         fig.savefig(figname); plt.close(fig)
@@ -321,7 +324,7 @@ class FocalSurfaceSolver(object):
         self.matchMeasToPlPlugMap(self.measXPos, self.measYPos) # sets attriubte plPlugMapInds
         # throughputList = self.getThroughputList()
         # self.plPlugMap.enterMappedData(self.measPosInds, throughputList, self.plPlugMapInds)
-        self.plPlugMap.enterMappedData(self.detectedFiberList, self.plPlugMapInds)
+        self.plPlugMap.enterMappedData(self.detectedFiberList)
         self.plPlugMap.writeMe(scanDir, 55555)
         self.plPlugMap.plotMissing()
 
@@ -482,7 +485,7 @@ class FocalSurfaceSolver(object):
         print("got ", len(plPlugMapInds), "matches", len(multiMatchInds), "multimatches")
         if len(plPlugMapInds) == len(xArray) or currentCall == maxCalls:
             # every match found, we're done!
-            self.plPlugMapInds = plPlugMapInds
+            # self.plPlugMapInds = plPlugMapInds
             # self.measPosInds = measPosInds
             self.measXPos = xArray
             self.measYpos = yArray

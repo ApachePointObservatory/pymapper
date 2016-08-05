@@ -18,7 +18,7 @@ from twisted.internet import reactor
 from sdss.utilities.astrodatetime import datetime
 
 from .camera import Camera, sortDetections, IMGBASENAME, IMGEXTENSION, getScanParams, \
-    pickleDetectionList, unpickleCentroids, plotDetectionsVsSlitPos
+    pickleDetectionList, unpickleCentroids
 # from .imgProcess import DetectedFiberList
 from .motor import MotorController
 from .fiberAssign import SlitheadSolver, FocalSurfaceSolver
@@ -115,7 +115,6 @@ def _solvePlate(scanDir, plateID, plot=False, plugMapPath=None):
     centroidList = unpickleCentroids(scanDir)
     detectedFiberList = sortDetections(centroidList, plot=plot)
     pickleDetectionList(detectedFiberList, scanDir)
-    # plotDetectionsVsSlitPos(scanDir)
     shs = SlitheadSolver(detectedFiberList, centroidList)
     shs.matchDetections()
     print("missing fibers: ")
