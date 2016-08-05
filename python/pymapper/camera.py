@@ -327,44 +327,40 @@ def processImage(imageFile):
     @param[in] imageFile. String
 
     """
+    global TZERO
+    global MOTORSPEED
+    global MOTORSTART
+    frame = int(imageFile.split(IMGBASENAME)[-1].split(".")[0])
+    imgData = scipy.ndimage.imread(imageFile)
+    timestamp = os.path.getmtime(imageFile) - TZERO
+    # timestamp = TZERO + ((frame-1)/11.) - TZERO # hack time!!!!
+    counts = None
+    xyCtr = None
+    rad = None
+    flatImg = imgData.flatten()
+    thresh = flatImg[numpy.nonzero(flatImg>ROUGH_THRESH)]
+    # print("median %.4f thresh %.4f  %i pixels over thresh"%(medianValue, sigma, len(thresh)))
+    totalCounts = numpy.sum(thresh)
+    # put some filtering here
     try:
-        global TZERO
-        global MOTORSPEED
-        global MOTORSTART
-        frame = int(imageFile.split(IMGBASENAME)[-1].split(".")[0])
-        imgData = scipy.ndimage.imread(imageFile)
-        timestamp = os.path.getmtime(imageFile) - TZERO
-        # timestamp = TZERO + ((frame-1)/11.) - TZERO # hack time!!!!
-        counts = None
-        xyCtr = None
-        rad = None
-        flatImg = imgData.flatten()
-        thresh = flatImg[numpy.nonzero(flatImg>ROUGH_THRESH)]
-        # print("median %.4f thresh %.4f  %i pixels over thresh"%(medianValue, sigma, len(thresh)))
-        totalCounts = numpy.sum(thresh)
-        # put some filtering here
-        try:
-            pyGuideCentroids = PyGuide.findStars(imgData, None, None, CCDInfo)[0]
-            # did we get any centroids?
-            if pyGuideCentroids:
-                counts = pyGuideCentroids[0].counts
-                xyCtr = pyGuideCentroids[0].xyCtr
-                rad = pyGuideCentroids[0].rad
-        except Exception:
-            print("some issue with pyguide on img (skipping): ", imageFile)
-            traceback.print_exc()
-        return dict((
-                        ("imageFile", imageFile),
-                        ("counts", counts),
-                        ("xyCtr", xyCtr),
-                        ("rad", rad),
-                        ("motorPos", MOTORSTART + MOTORSPEED*timestamp),
-                        ("frame", frame),
-                        ("totalCounts", totalCounts),
-                    ))
-    except:
-        print("Exception in processImage: GAAAHHHHHH")
+        pyGuideCentroids = PyGuide.findStars(imgData, None, None, CCDInfo)[0]
+        # did we get any centroids?
+        if pyGuideCentroids:
+            counts = pyGuideCentroids[0].counts
+            xyCtr = pyGuideCentroids[0].xyCtr
+            rad = pyGuideCentroids[0].rad
+    except Exception:
+        print("some issue with pyguide on img (skipping): ", imageFile)
         traceback.print_exc()
+    return dict((
+                    ("imageFile", imageFile),
+                    ("counts", counts),
+                    ("xyCtr", xyCtr),
+                    ("rad", rad),
+                    ("motorPos", MOTORSTART + MOTORSPEED*timestamp),
+                    ("frame", frame),
+                    ("totalCounts", totalCounts),
+                ))
 
 class FScanCamera(Camera):
     """For testing with existing idlmapper fcan files
