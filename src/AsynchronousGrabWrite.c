@@ -136,11 +136,11 @@ VmbError_t  ConfigureCamera( VmbHandle_t pCameraHandle)
     const char* PixelFormat = "Mono8";
     int Width = 960;
     int Height = 960;
-    int OffsetX= 95; // offset columns such that the square image region is centered on the plate.
+    int OffsetX= 160; // offset columns such that the square image region is centered on the plate.
     int BinningHorizontal = 1;
     int BinningVertical = 1;
     int GVSPPacketSize = 500;
-    double ExposureTimeAbs = 60000;
+    double ExposureTimeAbs = 12000;
     const char* ExposureMode = "Timed";
 
     // Set ExposureTimeAbs
