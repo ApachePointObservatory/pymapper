@@ -271,7 +271,7 @@ def runScan(args):
         startPos = args.startPos,
         endPos = args.endPos,
         scanSpeed = args.scanSpeed,
-        hostname = "10.3.252.13",
+        hostname = "10.1.1.114",
         port = 15000,
         )
 
