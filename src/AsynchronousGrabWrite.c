@@ -46,6 +46,7 @@
 #include <Bitmap.h>
 #include "Common/PrintVimbaVersion.h"
 #include "Common/DiscoverGigECameras.h"
+#include "fitsio.h"
 
 
 enum
@@ -71,6 +72,8 @@ double          g_dFrequency                = 0.0;              //Frequency of t
 
 char fileNameBuf[30]; //will hold updated filenames (with numbers attached)
 int frameNumber = 1; //iterator
+double frameTimeBegin;
+double lastFrameTime;
 
 #ifdef WIN32
     HANDLE          g_hMutex = INVALID_HANDLE_VALUE;
@@ -245,6 +248,22 @@ VmbError_t  ConfigureCamera( VmbHandle_t pCameraHandle)
 
 }
 
+void printerror( int status)
+{
+    /*****************************************************/
+    /* Print out cfitsio error messages and exit program */
+    /*****************************************************/
+
+
+    if (status)
+    {
+       fits_report_error(stderr, status); /* print error report */
+
+       exit( status );    /* terminate the program, returning error status */
+    }
+    return;
+}
+
     //
 // Method: ProcessFrame
 //
@@ -253,47 +272,120 @@ VmbError_t  ConfigureCamera( VmbHandle_t pCameraHandle)
 // Parameters:
 // [in] pFrame frame to process data might be destroyed dependent on transform function used
 //
-VmbError_t ProcessFrame( VmbFrame_t * pFrame)
+// https://heasarc.gsfc.nasa.gov/docs/software/fitsio/quick/node7.html
+
+
+
+VmbError_t ProcessFrame( VmbFrame_t * pFrame )
 {
-    AVTBitmap           bitmap;                                 // The bitmap we create
+    sprintf(fileNameBuf, "img%i.fits", frameNumber);
+    /******************************************************/
+    /* Create a FITS primary array containing a 2-D image */
+    /******************************************************/
+
+    fitsfile *fptr;       /* pointer to the FITS file, defined in fitsio.h */
+    int status, ii, jj;
+    long  fpixel, nelements, timestamp, fps;
+    double frametime;
+    // unsigned short *array[960];
+
+    /* initialize FITS image parameters */
+    int bitpix   =  BYTE_IMG; //USHORT_IMG;
+    long naxis    =   2;  /* 2-dimensional image                            */
+    long naxes[2] = { 960, 960 };
+
+    // remove(filename);               /* Delete old file if it already exists */
+
+    status = 0;         /* initialize status before calling fitsio routines */
+
+    if (fits_create_file(&fptr, fileNameBuf, &status)) /* create new FITS file */
+         printerror( status );           /* call printerror if error occurs */
+
+    /* write the required keywords for the primary array image.     */
+    /* Since bitpix = USHORT_IMG, this will cause cfitsio to create */
+    /* a FITS image with BITPIX = 16 (signed short integers) with   */
+    /* BSCALE = 1.0 and BZERO = 32768.  This is the convention that */
+    /* FITS uses to store unsigned integers.  Note that the BSCALE  */
+    /* and BZERO keywords will be automatically written by cfitsio  */
+    /* in this case.                                                */
+
+    if ( fits_create_img(fptr,  bitpix, naxis, naxes, &status) )
+         printerror( status );
 
 
-    // check if we can get data
-    if( NULL == pFrame || NULL == pFrame->buffer )
-    {
-        printf("%s error invalid frame\n", __FUNCTION__);
-        return VmbErrorBadParameter;
-    }
-    bitmap.bufferSize = pFrame->imageSize;
-    bitmap.width = pFrame->width;
-    bitmap.height = pFrame->height;
-    bitmap.colorCode = ColorCodeMono8;
-    // Create the bitmap
-    if ( 0 == AVTCreateBitmap( &bitmap, pFrame->buffer ))
-    {
-        printf( "Could not create bitmap.\n" );
-    }
-    else
-    {
-        // Save the bitmap
-        // pFileName = "myFileName%i", ii;
-        sprintf(fileNameBuf, "img%i.bmp", frameNumber);
-        if ( 0 == AVTWriteBitmapToFile( &bitmap, fileNameBuf ))
-        {
-            printf( "Could not write bitmap to file.\n" );
-        }
-        else
-        {
-            printf( "Bitmap successfully written to file \"%s\"\n", fileNameBuf );
-            // Release the bitmap's buffer
-            frameNumber ++;
-            if ( 0 == AVTReleaseBitmap( &bitmap ))
-            {
-                printf( "Could not release the bitmap.\n" );
-            }
-        }
-    }
+    fpixel = 1;                               /* first pixel to write      */
+    nelements = naxes[0] * naxes[1];          /* number of pixels to write */
+
+    /* write the array of unsigned integers to the FITS file */
+    if ( fits_write_img(fptr, TBYTE, fpixel, nelements, pFrame->buffer, &status) )
+    // if ( fits_write_img(fptr, TUSHORT, fpixel, nelements, array[0], &status) )
+        printerror( status );
+
+    // free( array[0] );  /* free previously allocated memory */
+
+    /* write another optional keyword to the header */
+    /* Note that the ADDRESS of the value is passed in the routine */
+    timestamp = dFrameTime;
+    if ( fits_update_key(fptr, TDOUBLE, "TIMESTAMP", &timestamp,
+         "timestamp of frame (seconds)", &status) )
+         printerror( status );
+
+    fps = 1.0/dTimeDiff;
+    // printf("timestamp: %.4f   fps: %.4f", timestamp, fps);
+    if ( fits_update_key(fptr, TDOUBLE, "FPS", &fps,
+         "frames per second", &status) )
+         printerror( status );
+
+    if ( fits_close_file(fptr, &status) )                /* close the file */
+         printerror( status );
+    frameNumber ++;
+    printf( "fits successfully written to file \"%s\"\n", fileNameBuf );
+    // return;
 }
+
+
+
+// VmbError_t ProcessFrame( VmbFrame_t * pFrame)
+// {
+//     AVTBitmap           bitmap;                                 // The bitmap we create
+
+
+//     // check if we can get data
+//     if( NULL == pFrame || NULL == pFrame->buffer )
+//     {
+//         printf("%s error invalid frame\n", __FUNCTION__);
+//         return VmbErrorBadParameter;
+//     }
+//     bitmap.bufferSize = pFrame->imageSize;
+//     bitmap.width = pFrame->width;
+//     bitmap.height = pFrame->height;
+//     bitmap.colorCode = ColorCodeMono8;
+//     // Create the bitmap
+//     if ( 0 == AVTCreateBitmap( &bitmap, pFrame->buffer ))
+//     {
+//         printf( "Could not create bitmap.\n" );
+//     }
+//     else
+//     {
+//         // Save the bitmap
+//         // pFileName = "myFileName%i", ii;
+//         sprintf(fileNameBuf, "img%i.bmp", frameNumber);
+//         if ( 0 == AVTWriteBitmapToFile( &bitmap, fileNameBuf ))
+//         {
+//             printf( "Could not write bitmap to file.\n" );
+//         }
+//         else
+//         {
+//             printf( "Bitmap successfully written to file \"%s\"\n", fileNameBuf );
+//             // Release the bitmap's buffer
+//             frameNumber ++;
+//             if ( 0 == AVTReleaseBitmap( &bitmap ))
+//             {
+//                 printf( "Could not release the bitmap.\n" );
+//             }
+//         }
+//     }
+// }
 
 
 // //
@@ -541,7 +633,7 @@ void VMB_CALL FrameCallback( const VmbHandle_t cameraHandle, VmbFrame_t* pFrame 
         printf( "\n" );
     }
     // goto image processing
-    ProcessFrame( pFrame);
+    ProcessFrame( pFrame );
 
     fflush( stdout );
     // requeue the frame so it can be filled again
