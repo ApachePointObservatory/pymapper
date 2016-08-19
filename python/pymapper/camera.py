@@ -63,7 +63,7 @@ from IDL:
 
 EXE = "AsynchronousGrabWrite"
 IMGBASENAME = "img"
-IMGEXTENSION = "bmp"
+IMGEXTENSION = "fits"
 MINCOUNTS = 0
 ROUGH_THRESH = 8 # for filtering out pixels going into "totalCounts" in each frame
 MINSEP = 3.5 # min between fibers separation in pixels

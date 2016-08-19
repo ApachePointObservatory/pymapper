@@ -364,6 +364,10 @@ VmbError_t ProcessFrame( VmbFrame_t * pFrame )
          "frames per second", &status) )
          printerror( status );
 
+    if ( fits_update_key(fptr, TUINT, "FNum", &frameNumber,
+         "frame number", &status) )
+         printerror( status );
+
     if ( fits_close_file(fptr, &status) )                /* close the file */
          printerror( status );
     frameNumber ++;
