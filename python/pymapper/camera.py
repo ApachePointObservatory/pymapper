@@ -331,18 +331,19 @@ def processImage(imageFile):
     global MOTORSPEED
     global MOTORSTART
     frame = int(imageFile.split(IMGBASENAME)[-1].split(".")[0])
-    imgData = scipy.ndimage.imread(imageFile)
     timestamp = os.path.getmtime(imageFile) - TZERO
-    # timestamp = TZERO + ((frame-1)/11.) - TZERO # hack time!!!!
     counts = None
     xyCtr = None
     rad = None
-    flatImg = imgData.flatten()
-    thresh = flatImg[numpy.nonzero(flatImg>ROUGH_THRESH)]
-    # print("median %.4f thresh %.4f  %i pixels over thresh"%(medianValue, sigma, len(thresh)))
-    totalCounts = numpy.sum(thresh)
+    totalCounts = None
+
     # put some filtering here
     try:
+        imgData = scipy.ndimage.imread(imageFile)
+        flatImg = imgData.flatten()
+        thresh = flatImg[numpy.nonzero(flatImg>ROUGH_THRESH)]
+        # print("median %.4f thresh %.4f  %i pixels over thresh"%(medianValue, sigma, len(thresh)))
+        totalCounts = numpy.sum(thresh)
         pyGuideCentroids = PyGuide.findStars(imgData, None, None, CCDInfo)[0]
         # did we get any centroids?
         if pyGuideCentroids:
