@@ -137,7 +137,7 @@ class SlitheadSolver(object):
         missingFiberStr = ",".join([str(fiber) for fiber in self.missingFibers])
         plt.text(meanX, maxY - 0.15, "Missing Fiber Numbers: %s"%missingFiberStr, horizontalalignment="center", fontsize=30)
         plt.text(meanX, maxY - 0.05, "Fit -- Scale: %.4f Offset: %.4f (mm)"%(self.scale, self.offset), horizontalalignment="center", fontsize=30)
-        fig.savefig(nfn); plt.close(fig)
+        # fig.savefig(nfn); plt.close(fig)
         # plt.show()
 
 
@@ -197,6 +197,8 @@ class SlitheadSolver(object):
             if minInd in inds:
                 import pdb; pdb.set_trace()
             assert minInd not in inds # can have on fiber match twice
+            if len(inds)>0:
+                assert minInd > inds[-1]
             inds.append(minInd)
         self.matchInds = inds
         self.missingFibers = sorted([fiber+1 for fiber in set(range(300))-set(self.matchInds)])
@@ -376,22 +378,22 @@ class FocalSurfaceSolver(object):
         """Use a minimizer to get translation, rotation and scale close enough
         to determine (hopefully many) robust matches.
         """
-        # self.plot(self.measXPos, self.measYPos)
+        self.plot(self.measXPos, self.measYPos)
         # step 1 rough fit tranlation
         transx, transy = fmin(self.minimizeTranslation, [0,0], args=(FWHMCOARSE,))
-        # self.plot(self.measXPos-transx, self.measYPos-transy)
+        self.plot(self.measXPos-transx, self.measYPos-transy)
 
         # step 2 rough fig scale and rot
         rot, scale = fmin(self.minimizeRotScale, [0,1], args=(transx, transy, FWHMCOARSE))
         x, y = self.applyTransRotScale(self.measXPos, self.measYPos, transx, transy, rot, scale)
-        # self.plot(x, y)
+        self.plot(x, y)
         print(transx, transy, rot, scale)
 
         # step 3, re fit trans rot scale together, with tighter gaussians around the target points
         transx, transy, rot, scale = fmin(self.minimizeTransRotScale, [transx, transy, rot, scale], args=(FWHMFINE,))
         print(transx, transy, rot, scale)
         self.measXPos, self.measYPos = self.applyTransRotScale(self.measXPos, self.measYPos, transx, transy, rot, scale)
-        # self.plot(self.measXPos, self.measYPos)
+        self.plot(self.measXPos, self.measYPos)
 
     def minimizeTranslation(self, transxy, fwhm):
         transx, transy = transxy
@@ -473,6 +475,7 @@ class FocalSurfaceSolver(object):
             if plInd in plPlugMapInds:
                 # this index was already matched to another
                 # put it in the multimatch index
+                print("got a multimatch")
                 multiMatchInds.append(plInd)
                 badIndex = plPlugMapInds.index(plInd)
                 plPlugMapInds.pop(badIndex)
@@ -483,15 +486,27 @@ class FocalSurfaceSolver(object):
 
         # did we get the expected amount of matches?
         print("got ", len(plPlugMapInds), "matches", len(multiMatchInds), "multimatches")
-        if len(plPlugMapInds) == len(xArray) or currentCall == maxCalls:
+        if currentCall>1 and len(plPlugMapInds) == len(xArray) or currentCall == maxCalls:
+            # must iterate at least once to fully solve using russells model!
             # every match found, we're done!
             # self.plPlugMapInds = plPlugMapInds
             # self.measPosInds = measPosInds
             self.measXPos = xArray
             self.measYpos = yArray
-            for detectedFiber,x,y,plInd in itertools.izip(self.detectedFiberList, xArray, yArray, plPlugMapInds):
+            errArr = []
+            for measPosInd, plInd in itertools.izip(measPosInds, plPlugMapInds):
+                detectedFiber = self.detectedFiberList[measPosInd]
+                x = xArray[measPosInd]
+                y = yArray[measPosInd]
                 detectedFiber.setPlPlugObjInd(plInd)
                 detectedFiber.setFocalPos([x,y])
+                xPl = self.plPlugMap.xPos[plInd]
+                yPl = self.plPlugMap.yPos[plInd]
+                xyErr = (x-xPl)**2+(y-yPl)**2
+                # print("xyErr %.4f"%xyErr)
+                errArr.append(xyErr)
+            plt.hist(errArr, 100)
+            print("XY RMS: %.4f"%(numpy.sqrt(numpy.sum(errArr)/len(errArr))))
             return
 
         # determine exact transrotscale solution now that we have (at least) some robust matches.
@@ -513,7 +528,7 @@ class FocalSurfaceSolver(object):
         newPositions = fitTransRotScale.model.apply(xyArray, doInverse=True)
         xArray = newPositions[:,0]
         yArray = newPositions[:,1]
-        # self.plot(xArray, yArray)
+        self.plot(xArray, yArray)
         self.matchMeasToPlPlugMap(xArray, yArray, currentCall=currentCall+1, previousSolution=transRotScaleSolution)
 
 

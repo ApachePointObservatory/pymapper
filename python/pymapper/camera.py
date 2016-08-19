@@ -342,6 +342,7 @@ def processImage(imageFile):
     # print("median %.4f thresh %.4f  %i pixels over thresh"%(medianValue, sigma, len(thresh)))
     totalCounts = numpy.sum(thresh)
     # put some filtering here
+    failed=False
     try:
         pyGuideCentroids = PyGuide.findStars(imgData, None, None, CCDInfo)[0]
         # did we get any centroids?
@@ -352,7 +353,8 @@ def processImage(imageFile):
     except Exception:
         print("some issue with pyguide on img (skipping): ", imageFile)
         traceback.print_exc()
-    return dict((
+        failed=True
+    outDict = dict((
                     ("imageFile", imageFile),
                     ("counts", counts),
                     ("xyCtr", xyCtr),
@@ -361,6 +363,10 @@ def processImage(imageFile):
                     ("frame", frame),
                     ("totalCounts", totalCounts),
                 ))
+    if failed:
+        print("failed but got here")
+        print("outDict", outDict)
+    return outDict
 
 class FScanCamera(Camera):
     """For testing with existing idlmapper fcan files
