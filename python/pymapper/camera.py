@@ -346,6 +346,7 @@ def processImage(imageFile):
         timestamp = fitsImg[0].header["TSTAMP"]
         frame = fitsImg[0].header["FNUM"]
         imgData = fitsImg[0].data
+        fitsImg.close()
         flatImg = imgData.flatten()
         thresh = flatImg[numpy.nonzero(flatImg>ROUGH_THRESH)]
         # print("median %.4f thresh %.4f  %i pixels over thresh"%(medianValue, sigma, len(thresh)))
@@ -356,6 +357,7 @@ def processImage(imageFile):
             counts = pyGuideCentroids[0].counts
             xyCtr = pyGuideCentroids[0].xyCtr
             rad = pyGuideCentroids[0].rad
+        del imgData # paranoia
     except Exception:
         print("some issue with pyguide on img (skipping): ", imageFile)
         traceback.print_exc()

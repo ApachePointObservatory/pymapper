@@ -299,7 +299,7 @@ def main(argv=None):
                             )
     parser.add_argument("--rootDir", required=False,
         default=baseDir, help="Root directory, scanDir will be created here.")
-    parser.add_argument("--startPos", required=False, type=float, default=124,
+    parser.add_argument("--startPos", required=False, type=float, default=134,
         help="begin of scan motor position (mm).")
     parser.add_argument("--endPos", required=False, type=float, default=24,
         help="end of scan motor position (mm).")
