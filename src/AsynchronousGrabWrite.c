@@ -296,7 +296,7 @@ double GetTime()
 
 VmbError_t ProcessFrame( VmbFrame_t * pFrame )
 {
-    sprintf(fileNameBuf, "img%i.fits", frameNumber);
+    sprintf(fileNameBuf, "img%06d.fits", frameNumber);
     /******************************************************/
     /* Create a FITS primary array containing a 2-D image */
     /******************************************************/
