@@ -274,6 +274,24 @@ void printerror( int status)
 //
 // https://heasarc.gsfc.nasa.gov/docs/software/fitsio/quick/node7.html
 
+//
+// Method: GetTime
+//
+// Purpose: get time indicator
+//
+// Returns: time indicator in seconds for differential measurements
+double GetTime()
+{
+#ifdef WIN32
+    LARGE_INTEGER nCounter;
+    QueryPerformanceCounter( &nCounter );
+    return ( (double)nCounter.QuadPart ) / g_dFrequency;
+#else
+    struct timespec now;
+    clock_gettime( CLOCK_REALTIME, &now );
+    return ( (double)now.tv_sec ) + ( (double)now.tv_nsec ) / 1000000000.0;
+#endif //WIN32
+}
 
 
 VmbError_t ProcessFrame( VmbFrame_t * pFrame )
@@ -285,8 +303,8 @@ VmbError_t ProcessFrame( VmbFrame_t * pFrame )
 
     fitsfile *fptr;       /* pointer to the FITS file, defined in fitsio.h */
     int status, ii, jj;
-    long  fpixel, nelements, timestamp, fps;
-    double frametime;
+    long  fpixel, nelements;
+    double frameTime, fps;
     // unsigned short *array[960];
 
     /* initialize FITS image parameters */
@@ -298,6 +316,18 @@ VmbError_t ProcessFrame( VmbFrame_t * pFrame )
 
     status = 0;         /* initialize status before calling fitsio routines */
 
+    // get timestamp stuff
+    if (frameNumber == 1){
+        frameTimeBegin = GetTime();
+        lastFrameTime = 0;
+        frameTime = 0;
+        fps = 0;
+    }
+    else{
+
+        frameTime = GetTime() - frameTimeBegin;
+        fps =  1.0 / (frameTime - lastFrameTime);
+    }
     if (fits_create_file(&fptr, fileNameBuf, &status)) /* create new FITS file */
          printerror( status );           /* call printerror if error occurs */
 
@@ -325,13 +355,11 @@ VmbError_t ProcessFrame( VmbFrame_t * pFrame )
 
     /* write another optional keyword to the header */
     /* Note that the ADDRESS of the value is passed in the routine */
-    timestamp = dFrameTime;
-    if ( fits_update_key(fptr, TDOUBLE, "TIMESTAMP", &timestamp,
+    if ( fits_update_key(fptr, TDOUBLE, "TSTAMP", &frameTime,
          "timestamp of frame (seconds)", &status) )
          printerror( status );
 
-    fps = 1.0/dTimeDiff;
-    // printf("timestamp: %.4f   fps: %.4f", timestamp, fps);
+    // printf("timestamp: %.4f   fps: %.4f", frameTime, fps);
     if ( fits_update_key(fptr, TDOUBLE, "FPS", &fps,
          "frames per second", &status) )
          printerror( status );
@@ -339,6 +367,7 @@ VmbError_t ProcessFrame( VmbFrame_t * pFrame )
     if ( fits_close_file(fptr, &status) )                /* close the file */
          printerror( status );
     frameNumber ++;
+    lastFrameTime = frameTime;
     printf( "fits successfully written to file \"%s\"\n", fileNameBuf );
     // return;
 }
@@ -466,24 +495,6 @@ VmbError_t ProcessFrame( VmbFrame_t * pFrame )
 //     return -Result;
 // }
 
-//
-// Method: GetTime
-//
-// Purpose: get time indicator
-//
-// Returns: time indicator in seconds for differential measurements
-double GetTime()
-{
-#ifdef WIN32
-    LARGE_INTEGER nCounter;
-    QueryPerformanceCounter( &nCounter );
-    return ( (double)nCounter.QuadPart ) / g_dFrequency;
-#else
-    struct timespec now;
-    clock_gettime( CLOCK_REALTIME, &now );
-    return ( (double)now.tv_sec ) + ( (double)now.tv_nsec ) / 1000000000.0;
-#endif //WIN32
-}
 
 //
 // Method: FrameCallback

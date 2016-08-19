@@ -27,7 +27,10 @@ INCLUDE_DIRS        = -I$(SOURCE_DIR) \
 
 LIBS                = $(VIMBAC_LIBS) \
                       $(VIMBAIMAGETRANSFORM_LIBS) \
-					  -lrt
+					  -lrt \
+					  -lm \
+					  -lnsl \
+					  -lcfitsio
 
 DEFINES             =
 
