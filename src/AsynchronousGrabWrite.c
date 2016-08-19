@@ -370,9 +370,11 @@ VmbError_t ProcessFrame( VmbFrame_t * pFrame )
 
     if ( fits_close_file(fptr, &status) )                /* close the file */
          printerror( status );
+    if (frameNumber % 100 == 0){
+        printf( "fits successfully written to file \"%s\"\n", fileNameBuf );
+    }
     frameNumber ++;
     lastFrameTime = frameTime;
-    printf( "fits successfully written to file \"%s\"\n", fileNameBuf );
     // return;
 }
 

@@ -169,15 +169,15 @@ def _saveFits(filename, array2d):
 def _saveJpeg(filename, array2d):
     scipy.misc.imsave(filename, array2d)
 
-def getImgTimestamps(imageFileDirectory, imgBaseName=IMGBASENAME, imgExtension=IMGEXTENSION):
-    imageFilesSorted = getSortedImages(imageFileDirectory, imgBaseName, imgExtension)
-    timeStamps = []
-    for imgFile in imageFilesSorted:
-        timeStamps.append(os.path.getmtime(imgFile))
-    # normalize first image to have time=0
-    timeStamps = numpy.asarray(timeStamps)
-    timeStamps = timeStamps - timeStamps[0]
-    return timeStamps
+# def getImgTimestamps(imageFileDirectory, imgBaseName=IMGBASENAME, imgExtension=IMGEXTENSION):
+#     imageFilesSorted = getSortedImages(imageFileDirectory, imgBaseName, imgExtension)
+#     timeStamps = []
+#     for imgFile in imageFilesSorted:
+#         timeStamps.append(os.path.getmtime(imgFile))
+#     # normalize first image to have time=0
+#     timeStamps = numpy.asarray(timeStamps)
+#     timeStamps = timeStamps - timeStamps[0]
+#     return timeStamps
 
 def getSortedImages(imageFileDirectory, imgBaseName=IMGBASENAME, imgExtension=IMGEXTENSION):
     # warning image files are not sorted as expected, even after explicitly sorting
@@ -212,10 +212,11 @@ class Camera(object):
 
     def getAllImgFiles(self):
         # glob doesn't order correctly in
-        return getSortedImages(self.imageDir)
+        return glob.glob(os.path.join(self.imageDir, "*."+IMGEXTENSION))
 
     def getNthFile(self, fileNum):
-        filename = "%s%i.%s"%(IMGBASENAME, fileNum, IMGEXTENSION)
+        filenumStr = ("%i"%fileNum).zfill(6)
+        filename = "%s%s.%s"%(IMGBASENAME, filenumStr, IMGEXTENSION)
         return os.path.join(self.imageDir, filename)
 
     def getUnprocessedFileList(self):
@@ -327,11 +328,13 @@ def processImage(imageFile):
     @param[in] imageFile. String
 
     """
-    global TZERO
+    # global TZERO
     global MOTORSPEED
     global MOTORSTART
-    frame = int(imageFile.split(IMGBASENAME)[-1].split(".")[0])
-    timestamp = os.path.getmtime(imageFile) - TZERO
+    # frame = int(imageFile.split(IMGBASENAME)[-1].split(".")[0])
+    # timestamp = os.path.getmtime(imageFile) - TZERO
+    frame = None
+    timestamp = None
     counts = None
     xyCtr = None
     rad = None
@@ -339,7 +342,10 @@ def processImage(imageFile):
 
     # put some filtering here
     try:
-        imgData = scipy.ndimage.imread(imageFile)
+        fitsImg = fits.open(imageFile)
+        timestamp = fitsImg[0].header["TSTAMP"]
+        frame = fitsImg[0].header["FNUM"]
+        imgData = fitsImg[0].data
         flatImg = imgData.flatten()
         thresh = flatImg[numpy.nonzero(flatImg>ROUGH_THRESH)]
         # print("median %.4f thresh %.4f  %i pixels over thresh"%(medianValue, sigma, len(thresh)))

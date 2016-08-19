@@ -161,9 +161,9 @@ def reprocessImgs(args):
         scanSpeed = scanParams["speed"]
     except:
         print("coldn't parse logfile using defaults")
-        startPos = 24
-        endPos = 134
-        scanSpeed = 0.6
+        startPos = 134
+        endPos = 24
+        scanSpeed = 1.2
     # create directory to hold camera images
     # note all previous images will be removed if image dir is not empty
     camera = Camera(scanDir, startPos, scanSpeed)
@@ -271,7 +271,7 @@ def runScan(args):
         startPos = args.startPos,
         endPos = args.endPos,
         scanSpeed = args.scanSpeed,
-        hostname = "10.1.1.114",
+        hostname = "139.229.101.114",
         port = 15000,
         )
 
