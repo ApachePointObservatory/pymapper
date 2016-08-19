@@ -299,11 +299,11 @@ def main(argv=None):
                             )
     parser.add_argument("--rootDir", required=False,
         default=baseDir, help="Root directory, scanDir will be created here.")
-    parser.add_argument("--startPos", required=False, type=float, default=24,
+    parser.add_argument("--startPos", required=False, type=float, default=124,
         help="begin of scan motor position (mm).")
-    parser.add_argument("--endPos", required=False, type=float, default=134,
+    parser.add_argument("--endPos", required=False, type=float, default=24,
         help="end of scan motor position (mm).")
-    parser.add_argument("--scanSpeed", required=False, type=float, default=0.6,
+    parser.add_argument("--scanSpeed", required=False, type=float, default=1.2,
         help="speed at which motor scans (mm/sec).")
     parser.add_argument("--plotDetections", action="store_true", default=False, help="if present create png plots with circled dectections, takes much longer." )
     parser.add_argument("--resolvePlate", action="store_true", default=False, help="if present, solve plate matching fibers to holes, from pickled img process output.")
