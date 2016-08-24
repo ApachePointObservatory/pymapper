@@ -30,6 +30,8 @@ baseDir = os.path.join(homedir, "Documents/Camera_test")
 baseName = "test"
 fiberslitposfile = os.path.join(os.getenv("PYMAPPER_DIR"), "etc", "fiberpos.dat")
 
+# import cProfile, pstats, StringIO
+# pr = cProfile.Profile()
 
 """
 todo: add re-detect/re-solve options
@@ -112,6 +114,14 @@ def configureLogging(scanDir, overwrite=True):
     return logfile
 
 def _solvePlate(scanDir, plateID, plot=False, plugMapPath=None):
+    # global pr
+    # pr.disable()
+    # s = StringIO.StringIO()
+    # sortby = 'cumulative'
+    # ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+    # ps.print_stats()
+    # print(s.getvalue())
+
     centroidList = unpickleCentroids(scanDir)
     detectedFiberList = sortDetections(centroidList, plot=plot)
     pickleDetectionList(detectedFiberList, scanDir)
@@ -140,6 +150,8 @@ def resolvePlate(args):
 
 
 def reprocessImgs(args):
+    # global pr
+    # pr.enable()
     # get all relative information
     # from existing log file
     if args.scanDir is None:
@@ -154,20 +166,13 @@ def reprocessImgs(args):
         raise RuntimeError("Scan directory doesn't contain existing imgs, cannot --reprocess!")
     logfile = configureLogging(scanDir, overwrite=False)
     print("reprocessing images in %s"%scanDir)
-    # determine previous scan params
-    try:
-        scanParams = getScanParams(logfile)
-        startPos = scanParams["start"]
-        endPos = scanParams["end"]
-        scanSpeed = scanParams["speed"]
-    except:
-        print("coldn't parse logfile using defaults")
-        startPos = 24
-        endPos = 134
-        scanSpeed = 0.6
+    scanParams = getScanParams(os.path.join(scanDir, "scanParams.par"))
+    startPos = scanParams["start"]
+    endPos = scanParams["end"]
+    scanSpeed = scanParams["speed"]
     # create directory to hold camera images
     # note all previous images will be removed if image dir is not empty
-    camera = Camera(scanDir, startPos, scanSpeed)
+    camera = Camera(scanDir, startPos, endPos, scanSpeed)
     solvePlate = partial(_solvePlate, scanDir=scanDir, plateID=args.plateID, plot=args.plotDetections, plugMapPath=args.plPlugMap)
     camera.doneProcessingCallback(solvePlate)
     camera.reprocessImages()
@@ -262,7 +267,7 @@ def runScan(args):
 
     # create directory to hold camera images
     # note all previous images will be removed if image dir is not empty
-    camera = Camera(scanDir, args.startPos, args.scanSpeed)
+    camera = Camera(scanDir, args.startPos, args.endPos, args.scanSpeed)
 
     # setup object that finds and holds detections
     # detectedFiberList = DetectedFiberList()
@@ -272,7 +277,7 @@ def runScan(args):
         startPos = args.startPos,
         endPos = args.endPos,
         scanSpeed = args.scanSpeed,
-        hostname = "10.1.1.114",
+        hostname = "139.229.101.114",
         port = 15000,
         )
 
@@ -300,11 +305,11 @@ def main(argv=None):
                             )
     parser.add_argument("--rootDir", required=False,
         default=baseDir, help="Root directory, scanDir will be created here.")
-    parser.add_argument("--startPos", required=False, type=float, default=24,
+    parser.add_argument("--startPos", required=False, type=float, default=134,
         help="begin of scan motor position (mm).")
-    parser.add_argument("--endPos", required=False, type=float, default=134,
+    parser.add_argument("--endPos", required=False, type=float, default=24,
         help="end of scan motor position (mm).")
-    parser.add_argument("--scanSpeed", required=False, type=float, default=0.6,
+    parser.add_argument("--scanSpeed", required=False, type=float, default=1.2,
         help="speed at which motor scans (mm/sec).")
     parser.add_argument("--plotDetections", action="store_true", default=False, help="if present create png plots with circled dectections, takes much longer." )
     parser.add_argument("--resolvePlate", action="store_true", default=False, help="if present, solve plate matching fibers to holes, from pickled img process output.")
