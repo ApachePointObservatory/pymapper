@@ -30,6 +30,8 @@ baseDir = os.path.join(homedir, "Documents/Camera_test")
 baseName = "test"
 fiberslitposfile = os.path.join(os.getenv("PYMAPPER_DIR"), "etc", "fiberpos.dat")
 
+# import cProfile, pstats, StringIO
+# pr = cProfile.Profile()
 
 """
 todo: add re-detect/re-solve options
@@ -112,6 +114,14 @@ def configureLogging(scanDir, overwrite=True):
     return logfile
 
 def _solvePlate(scanDir, plateID, plot=False, plugMapPath=None):
+    # global pr
+    # pr.disable()
+    # s = StringIO.StringIO()
+    # sortby = 'cumulative'
+    # ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+    # ps.print_stats()
+    # print(s.getvalue())
+
     centroidList = unpickleCentroids(scanDir)
     detectedFiberList = sortDetections(centroidList, plot=plot)
     pickleDetectionList(detectedFiberList, scanDir)
@@ -139,6 +149,8 @@ def resolvePlate(args):
 
 
 def reprocessImgs(args):
+    # global pr
+    # pr.enable()
     # get all relative information
     # from existing log file
     if args.scanDir is None:
@@ -153,20 +165,13 @@ def reprocessImgs(args):
         raise RuntimeError("Scan directory doesn't contain existing imgs, cannot --reprocess!")
     logfile = configureLogging(scanDir, overwrite=False)
     print("reprocessing images in %s"%scanDir)
-    # determine previous scan params
-    try:
-        scanParams = getScanParams(logfile)
-        startPos = scanParams["start"]
-        endPos = scanParams["end"]
-        scanSpeed = scanParams["speed"]
-    except:
-        print("coldn't parse logfile using defaults")
-        startPos = 134
-        endPos = 24
-        scanSpeed = 1.2
+    scanParams = getScanParams(os.path.join(scanDir, "scanParams.par"))
+    startPos = scanParams["start"]
+    endPos = scanParams["end"]
+    scanSpeed = scanParams["speed"]
     # create directory to hold camera images
     # note all previous images will be removed if image dir is not empty
-    camera = Camera(scanDir, startPos, scanSpeed)
+    camera = Camera(scanDir, startPos, endPos, scanSpeed)
     solvePlate = partial(_solvePlate, scanDir=scanDir, plateID=args.plateID, plot=args.plotDetections, plugMapPath=args.plPlugMap)
     camera.doneProcessingCallback(solvePlate)
     camera.reprocessImages()
@@ -261,7 +266,7 @@ def runScan(args):
 
     # create directory to hold camera images
     # note all previous images will be removed if image dir is not empty
-    camera = Camera(scanDir, args.startPos, args.scanSpeed)
+    camera = Camera(scanDir, args.startPos, args.endPos, args.scanSpeed)
 
     # setup object that finds and holds detections
     # detectedFiberList = DetectedFiberList()

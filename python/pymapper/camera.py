@@ -10,6 +10,7 @@ import time
 import logging
 import traceback
 from multiprocessing import Pool
+import multiprocessing as mp
 
 import shutil
 
@@ -23,6 +24,8 @@ import PyGuide
 from twisted.internet import reactor
 
 from . import plt
+
+import cProfile, pstats, StringIO
 
 # how to deal with hot pixels?
 """
@@ -70,22 +73,27 @@ MINSEP = 3.5 # min between fibers separation in pixels
 
 # CCDInfo = PyGuide.CCDInfo(bias=50, readNoise=10, ccdGain=1)
 CCDInfo = PyGuide.CCDInfo(bias=1, readNoise=0, ccdGain=1)
+# pyguide mask
+PyGuideMask = numpy.zeros((960,960))
+midPix = 960/2.
+for x in range(960):
+    for y in range(960):
+        pixRad = numpy.sqrt((x-midPix)**2+(y-midPix)**2)
+        if pixRad > midPix:
+            PyGuideMask[x,y]=1
+
 # self.imageDir = os.path.join(os.environ["PYMAPPER_DIR"], "tests")
 
 # globals requred due to multiprocessing breaking
 # when calling class methods rather than functions
 # accepting a single argument (processImage)
-TZERO = None # time stamp of first image
+# TZERO = None # time stamp of first image
 MOTORSPEED = None
 MOTORSTART = None
+MOTOREND = None
 
-def extractValue(logLine):
-    """Get the float value following the ":" in a line
-    """
-    return float(logLine.split(":")[-1].strip())
-
-def getScanParams(logfile):
-    """Parse the logfile to determine the scan params
+def getScanParams(paramfile):
+    """Parse the paramfile to determine the scan params
     """
     outDict = {
         "speed": None,
@@ -93,21 +101,21 @@ def getScanParams(logfile):
         "end": None,
         "plateID": None,
     }
-    with open(logfile, "r") as f:
-        logLines = f.readlines()
-    for line in logLines:
-        if "plate ID" in line:
-            outDict["plateID"] = int(extractValue(line))
-        elif "motor start pos" in line:
-            outDict["start"] = extractValue(line)
-        elif "motor end pos" in line:
-            outDict["end"] = extractValue(line)
-        elif "motor scan speed" in line:
-            outDict["speed"] = extractValue(line)
-        if not None in outDict.values():
-            break
+    with open(paramfile, "r") as f:
+        paramLine = f.readlines()
+
+    for line in paramLine:
+        param, val = line.split()
+        if param == "plateID":
+            outDict["plateID"] = int(val)
+        elif param == "startPos":
+            outDict["start"] = float(val)
+        elif param == "endPos":
+            outDict["end"] = float(val)
+        elif param == "speed":
+            outDict["speed"] = float(val)
     if None in outDict.values():
-        raise RuntimeError("Could not extract plateID, start, end, and/or speed from logfile")
+        raise RuntimeError("Could not extract plateID, start, end, and/or speed from paramfile")
     return outDict
 
 def _basePickle(basename, pyobj, scanDir):
@@ -118,7 +126,7 @@ def _basePickle(basename, pyobj, scanDir):
         # when it was last modified
         fTime = time.ctime(os.path.getmtime(filename))
         movedfilename = "%s-%s.pkl"%(basename, fTime)
-        shutil.move(filename, movedfilename)
+        shutil.move(filename, os.path.join(scanDir, movedfilename))
         print("moving %s to %s"%(filename, movedfilename))
     output = open(filename, "wb")
     pickle.dump(pyobj, output)
@@ -144,56 +152,38 @@ def pickleDetectionList(detectionList, scanDir):
 def unpickleDetectionList(scanDir):
     return _baseUnpickle("detectionList", scanDir)
 
-def frameNumFromName(imgName, imgBase=IMGBASENAME, imgExt=IMGEXTENSION):
-    imgName = os.path.split(imgName)[-1]
-    return int(imgName.split(imgBase)[-1].split(".%s"%imgExt)[0])
+# def frameNumFromName(imgName, imgBase=IMGBASENAME, imgExt=IMGEXTENSION):
+#     imgName = os.path.split(imgName)[-1]
+#     return int(imgName.split(imgBase)[-1].split(".%s"%imgExt)[0])
 
-def convToFits(imageFileDirectory, flatImg, frameStartNum, frameEndNum=None, imgBaseName=IMGBASENAME, imgExtension=IMGEXTENSION):
-    saveImage()
+# def convToFits(imageFileDirectory, flatImg, frameStartNum, frameEndNum=None, imgBaseName=IMGBASENAME, imgExtension=IMGEXTENSION):
+#     saveImage()
 
-def saveImage(filename, array2d):
-    if os.path.exists(filename):
-        print("removing previous", filename)
-        os.remove(filename)
-    # median filter the image
-    # array2d = scipy.ndimage.median_filter(array2d, size=1)
-    if filename.endswith(".fits"):
-        _saveFits(filename, array2d)
-    else:
-        _saveJpeg(filename, array2d)
+# def saveImage(filename, array2d):
+#     if os.path.exists(filename):
+#         print("removing previous", filename)
+#         os.remove(filename)
+#     # median filter the image
+#     # array2d = scipy.ndimage.median_filter(array2d, size=1)
+#     if filename.endswith(".fits"):
+#         _saveFits(filename, array2d)
+#     else:
+#         _saveJpeg(filename, array2d)
 
-def _saveFits(filename, array2d):
-    hdu = fits.PrimaryHDU(array2d)
-    hdu.writeto(filename)
+# def _saveFits(filename, array2d):
+#     hdu = fits.PrimaryHDU(array2d)
+#     hdu.writeto(filename)
 
-def _saveJpeg(filename, array2d):
-    scipy.misc.imsave(filename, array2d)
-
-# def getImgTimestamps(imageFileDirectory, imgBaseName=IMGBASENAME, imgExtension=IMGEXTENSION):
-#     imageFilesSorted = getSortedImages(imageFileDirectory, imgBaseName, imgExtension)
-#     timeStamps = []
-#     for imgFile in imageFilesSorted:
-#         timeStamps.append(os.path.getmtime(imgFile))
-#     # normalize first image to have time=0
-#     timeStamps = numpy.asarray(timeStamps)
-#     timeStamps = timeStamps - timeStamps[0]
-#     return timeStamps
-
-def getSortedImages(imageFileDirectory, imgBaseName=IMGBASENAME, imgExtension=IMGEXTENSION):
-    # warning image files are not sorted as expected, even after explicitly sorting
-    # eg 999.jpg > 2000.jpg.  this is bad because image order matters very much
-    # furthermore rather than
-    # note image files are expected to be 1.jpg, 2.jpg, 3.jpg, ..., 354.jpg...
-    imageFiles = glob.glob(os.path.join(imageFileDirectory, "*."+imgExtension))
-    nImageFiles = len(imageFiles)
-    imageFilesSorted = [os.path.join(imageFileDirectory, "%s%i.%s"%(imgBaseName, num, imgExtension)) for num in range(1,nImageFiles)]
-    return imageFilesSorted
+# def _saveJpeg(filename, array2d):
+#     scipy.misc.imsave(filename, array2d)
 
 class Camera(object):
-    def __init__(self, imageDir, motorStart, motorSpeed):
+    def __init__(self, imageDir, motorStart, motorEnd, motorSpeed):
         global MOTORSTART
+        global MOTOREND
         global MOTORSPEED
         MOTORSTART = motorStart
+        MOTOREND = motorEnd
         MOTORSPEED = motorSpeed
         self.acquiring = False
         self.process = None
@@ -212,7 +202,7 @@ class Camera(object):
 
     def getAllImgFiles(self):
         # glob doesn't order correctly in
-        return glob.glob(os.path.join(self.imageDir, "*."+IMGEXTENSION))
+        return sorted(glob.glob(os.path.join(self.imageDir, "*."+IMGEXTENSION)))
 
     def getNthFile(self, fileNum):
         filenumStr = ("%i"%fileNum).zfill(6)
@@ -261,11 +251,11 @@ class Camera(object):
     def waitForFirstImage(self):
         # loop here until the first image is seen.  Once it is
         # fire the acquisition callback and begin processing
-        global TZERO
+        # global TZERO
         if os.path.exists(self.getNthFile(1)):
             print("acquisition started")
             # set the zeroth timestamp for determining motor position for each image
-            TZERO = os.path.getmtime(self.getNthFile(1))
+            # TZERO = os.path.getmtime(self.getNthFile(1))
             if self.acquisitionCB is not None:
                 print("firing acquisition callback")
                 reactor.callLater(0., self.acquisitionCB)
@@ -279,9 +269,9 @@ class Camera(object):
 
 
     def reprocessImages(self):
-        global TZERO
-        self.tZero = os.path.getmtime(self.getNthFile(1))
-        TZERO = self.tZero
+        # global TZERO
+        # self.tZero = os.path.getmtime(self.getNthFile(1))
+        # TZERO = self.tZero
         self.processingStart = time.time()
         allImgFiles = self.getAllImgFiles()
         self.centroidList = multiprocessImage(allImgFiles, callFunc=None, block=True)
@@ -331,6 +321,8 @@ def processImage(imageFile):
     # global TZERO
     global MOTORSPEED
     global MOTORSTART
+    global MOTOREND
+    motorDirection = numpy.sign(MOTOREND-MOTORSTART)
     # frame = int(imageFile.split(IMGBASENAME)[-1].split(".")[0])
     # timestamp = os.path.getmtime(imageFile) - TZERO
     frame = None
@@ -341,35 +333,48 @@ def processImage(imageFile):
     totalCounts = None
 
     # put some filtering here
-    try:
-        fitsImg = fits.open(imageFile)
-        timestamp = fitsImg[0].header["TSTAMP"]
-        frame = fitsImg[0].header["FNUM"]
-        imgData = fitsImg[0].data
-        fitsImg.close()
-        flatImg = imgData.flatten()
-        thresh = flatImg[numpy.nonzero(flatImg>ROUGH_THRESH)]
-        # print("median %.4f thresh %.4f  %i pixels over thresh"%(medianValue, sigma, len(thresh)))
-        totalCounts = numpy.sum(thresh)
-        pyGuideCentroids = PyGuide.findStars(imgData, None, None, CCDInfo)[0]
-        # did we get any centroids?
-        if pyGuideCentroids:
-            counts = pyGuideCentroids[0].counts
-            xyCtr = pyGuideCentroids[0].xyCtr
-            rad = pyGuideCentroids[0].rad
-        del imgData # paranoia
-    except Exception:
-        print("some issue with pyguide on img (skipping): ", imageFile)
-        traceback.print_exc()
+    # try:
+
+    fitsImg = fits.open(imageFile)
+    timestamp = fitsImg[0].header["TSTAMP"]
+    frame = fitsImg[0].header["FNUM"]
+    imgData = fitsImg[0].data
+    fitsImg.close()
+
+    if frame % 100 == 0:
+        print("processing frame number %i"%frame)
+    flatImg = imgData.flatten()
+    thresh = flatImg[numpy.nonzero(flatImg>ROUGH_THRESH)]
+    # print("median %.4f thresh %.4f  %i pixels over thresh"%(medianValue, sigma, len(thresh)))
+    totalCounts = numpy.sum(thresh)
+
+    pyGuideCentroids = PyGuide.findStars(imgData, PyGuideMask, None, CCDInfo)[0]
+    # did we get any centroids?
+    if pyGuideCentroids:
+        counts = pyGuideCentroids[0].counts
+        xyCtr = pyGuideCentroids[0].xyCtr
+        rad = pyGuideCentroids[0].rad
+    del imgData # paranoia
+
+    # except Exception:
+    #     print("some issue with pyguide on img (skipping): ", imageFile)
+    #     traceback.print_exc()
+
     return dict((
                     ("imageFile", imageFile),
                     ("counts", counts),
                     ("xyCtr", xyCtr),
                     ("rad", rad),
-                    ("motorPos", MOTORSTART + MOTORSPEED*timestamp),
+                    ("motorPos", MOTORSTART + motorDirection*MOTORSPEED*timestamp),
                     ("frame", frame),
                     ("totalCounts", totalCounts),
                 ))
+
+def processImage_(args):
+    out = [None]
+    cProfile.runctx('out[0] = processImage(args)', globals(), locals(),
+                    'profile-%s.out' % mp.current_process().name)
+    return out[0]
 
 class FScanCamera(Camera):
     """For testing with existing idlmapper fcan files
@@ -552,12 +557,15 @@ def sortDetections(brightestCentroidList, plot=False, minCounts=MINCOUNTS, minSe
         if plot:
             imageFile = brightestCentroid["imageFile"]
             color = "r" if isNewDetection else "b"
-            fig = plt.figure(figsize=(10,10));plt.imshow(scipy.ndimage.imread(imageFile), vmin=0, vmax=10)#plt.show(block=False)
+            img = fits.open(imageFile)
+            imgData = img[0].data
+            frameNumber = img[0].header["FNUM"]
+            img.close()
+            fig = plt.figure(figsize=(10,10));plt.imshow(imgData, vmin=0, vmax=10)#plt.show(block=False)
             plt.scatter(0, 0, s=80, facecolors='none', edgecolors='b')
             if brightestCentroid["xyCtr"] is not None:
                x,y = brightestCentroid["xyCtr"]
                plt.scatter(x, y, s=80, facecolors='none', edgecolors=color)
-            frameNumber = int(frameNumFromName(imageFile))
             zfilled = "%i"%frameNumber
             zfilled = zfilled.zfill(5)
             dd = os.path.split(imageFile)[0]
