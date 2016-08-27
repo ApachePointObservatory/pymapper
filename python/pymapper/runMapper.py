@@ -138,7 +138,7 @@ def _solvePlate(scanDir, plateID, plot=False, plugMapPath=None):
     print("plugmap path", plugMapPath)
     assert os.path.exists(plugMapPath)
     fss = FocalSurfaceSolver(detectedFiberList, plugMapPath, scanDir)
-    print("mapping done: took %.2 seconds"%(time.time()-tstart))
+    print("mapping done: took %.2f seconds"%(time.time()-tstart))
     # plt.show()
 
 def resolvePlate(args):
