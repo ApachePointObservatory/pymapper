@@ -29,6 +29,7 @@ homedir = os.path.expanduser("~")
 baseDir = os.path.join(homedir, "Documents/Camera_test")
 baseName = "test"
 fiberslitposfile = os.path.join(os.getenv("PYMAPPER_DIR"), "etc", "fiberpos.dat")
+tstart = None
 
 # import cProfile, pstats, StringIO
 # pr = cProfile.Profile()
@@ -121,7 +122,7 @@ def _solvePlate(scanDir, plateID, plot=False, plugMapPath=None):
     # ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
     # ps.print_stats()
     # print(s.getvalue())
-
+    global tstart
     centroidList = unpickleCentroids(scanDir)
     detectedFiberList = sortDetections(centroidList, plot=plot)
     pickleDetectionList(detectedFiberList, scanDir)
@@ -137,7 +138,8 @@ def _solvePlate(scanDir, plateID, plot=False, plugMapPath=None):
     print("plugmap path", plugMapPath)
     assert os.path.exists(plugMapPath)
     fss = FocalSurfaceSolver(detectedFiberList, plugMapPath, scanDir)
-    plt.show()
+    print("mapping done: took %.2 seconds"%(time.time()-tstart))
+    # plt.show()
 
 def resolvePlate(args):
     if args.scanDir is None:
@@ -181,7 +183,6 @@ def reprocessImgs(args):
 def runScan(args):
     """Move motor, take images, etc
     """
-    tstart = time.time()
     baseDir = os.path.abspath(args.rootDir)
         # baseDir doesn't exist
     # verify base directory is ok
@@ -316,7 +317,8 @@ def main(argv=None):
     parser.add_argument("--reprocessImgs", action="store_true", default=False, help="if present, reprocess the raw images.")
     parser.add_argument("--plPlugMap", required=False, help="path to plPlugMap file, if not present try to get it from $PLATELIST_DIR")
     args = parser.parse_args()
-
+    global tstart
+    tstart = time.time()
     if args.reprocessImgs:
         reprocessImgs(args)
     elif args.resolvePlate:

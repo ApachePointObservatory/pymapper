@@ -8,7 +8,7 @@ from sdss.utilities.yanny import yanny
 
 # unmapped = "plPlug8785P2.par"
 unmapped = "plPlugMapP-8785.par"
-mapped = "test169plug.par"
+mapped = "test170plug.par"
 mapped2 = "../data/test141/plPlugMapM-8785-55555-01-test.par"
 overlay2pl = "fiberBlocksAPOGEE_SOUTH.unordered.par"
 # map1 = "plPlugMapM_1.par"
