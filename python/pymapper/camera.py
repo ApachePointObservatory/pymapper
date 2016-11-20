@@ -27,7 +27,7 @@ from . import plt
 
 import cProfile, pstats, StringIO
 
-from pyCamera import startCapture, stopCapture
+from .pyCamera import startCapture, stopCapture
 
 # how to deal with hot pixels?
 """
