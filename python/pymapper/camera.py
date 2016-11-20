@@ -27,6 +27,8 @@ from . import plt
 
 import cProfile, pstats, StringIO
 
+from pyCamera import startCapture, stopCapture
+
 # how to deal with hot pixels?
 """
 from IDL:
@@ -230,12 +232,12 @@ class Camera(object):
             self.acquisitionCB = callFunc
         self.acquiring = True
         # this process initializes and starts the camera
-        self.process = subprocess.Popen(EXE, cwd=self.imageDir)
+        startCapture(self.imageDir)
         self.waitForFirstImage()
 
     def stopAcquisition(self):
         print("Stopping Camera Acquision")
-        self.process.kill()
+        stopCapture()
         self.acquiring = False
 
     def multiprocessDone(self):

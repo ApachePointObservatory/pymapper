@@ -99,7 +99,6 @@ class SlitheadSolver(object):
     def hack(self):
         self.nomMotorPos = numpy.asarray(self.nomMotorPos) * 1.05 #- 4
 
-
     def plotSolution(self, scanDir):
         # scale rawFluxes
         # rawFluxes = (self.rawFluxes - numpy.median(self.rawFluxes))
@@ -194,8 +193,6 @@ class SlitheadSolver(object):
             minInd = numpy.argmin(allErrs)
             err = allErrs[minInd]
             errs.append(err)
-            if minInd in inds:
-                import pdb; pdb.set_trace()
             assert minInd not in inds # can have on fiber match twice
             if len(inds)>0:
                 assert minInd > inds[-1]
@@ -212,14 +209,20 @@ class SlitheadSolver(object):
 
 
 class PlPlugMap(object):
-    def __init__(self, plPlugMapFile, scanDir):
+    def __init__(self, plPlugMapFile, scanDir, cartID, fscanID, fscanMJD):
         self.scanDir = scanDir
+        self.cartID = cartID
+        self.fscanID = fscanID
+        self.fscanMJD = fscanMJD
         self.plPlugMap = yanny(filename=plPlugMapFile, np=True)
         self.objectInds = numpy.argwhere(self.plPlugMap["PLUGMAPOBJ"]["holeType"]=="OBJECT")
         self.xPos = self.plPlugMap["PLUGMAPOBJ"]["xFocal"][self.objectInds].flatten()
         self.yPos = self.plPlugMap["PLUGMAPOBJ"]["yFocal"][self.objectInds].flatten()
         self.radPos = numpy.sqrt(self.xPos**2+self.yPos**2)
         self.plateID = int(self.plPlugMap["plateId"])
+
+    def append(self, updateDict):
+        self.plPlugMap.append(updateDict)
 
     def enterMappedData(self, detectedFiberList):
         # for fibers not found enter fiberID = -1, spectrographID = -1, and throughput = 0
@@ -251,19 +254,20 @@ class PlPlugMap(object):
     #         self.plPlugMap["PLUGMAPOBJ"]["fiberId"][holeInd] = fiberInd + 1 + 16
     #         self.plPlugMap["PLUGMAPOBJ"]["throughput"][holeInd] = fiberThroughput
 
-    def writeMe(self, writeDir, mjd):
+    def writeMe(self):
         # replace plPlugMapP-XXX with plPlugMapM-XXX
         # previousDirectory, filename = os.path.split(self.plPlugMap.filename)
         # determine any existing scans
-        globStr = os.path.join(writeDir, "plPlugMapM-%i-%i-*.par"%(self.plateID, mjd))
-        # print("globStr", globStr)
-        nExisting = glob.glob(globStr)
-        # number this scan accordingly
-        scanNum = len(nExisting) + 1
-        scanNumStr = ("%i"%scanNum).zfill(2)
-        # construct the new file name, will not overwrite any existing (scanNumStr is incremented)
-        filename = "plPlugMapM-%i-%i-%s-test.par"%(self.plateID, mjd, scanNumStr)
-        self.plPlugMap.write(os.path.join(writeDir, filename))
+        fscanIDstr = ("%i"%self.fscanID).zfill(2)
+        fileName = "plPlugMapM-%i-%i-%s.par"%(self.plateID, self.fscanMJD, fscanIDstr)
+        updateDict = {
+            "fscanMJD": self.fscanMJD,
+            "fscanId": self.fscanID,
+            "cartridgeId": self.cartID,
+            "instruments": "APOGEE_SOUTH"
+            }
+        self.plPlugMap.append(updateDict)
+        self.plPlugMap.write(os.path.join(self.scanDir, fileName))
 
     def plotMissing(self):
         tabHeight = 0.5 * MMPERINCH
@@ -310,12 +314,12 @@ class PlPlugMap(object):
 
 
 class FocalSurfaceSolver(object):
-    def __init__(self, detectedFiberList, plPlugMapFile, scanDir):
+    def __init__(self, detectedFiberList, plPlugMapFile, scanDir, cartID, fscanID, fscanMJD):
         self.scanDir = scanDir
         self.detectedFiberList = detectedFiberList
         if not os.path.exists(plPlugMapFile):
             raise RuntimeError("coudl not locate plPlugMapFile: %s"%plPlugMapFile)
-        self.plPlugMap = PlPlugMap(plPlugMapFile, scanDir)
+        self.plPlugMap = PlPlugMap(plPlugMapFile, scanDir, cartID, fscanID, fscanMJD)
         #self.nHistBins = 100 # number of bins for histogram
         #self.focalRadHist, self.binEdges = numpy.histogram(self.plPlugMap.radPos, bins=self.nHistBins)
         # self.plotRadialHist(self.plPlugMap.radPos, bins=self.binEdges)
@@ -327,7 +331,7 @@ class FocalSurfaceSolver(object):
         # throughputList = self.getThroughputList()
         # self.plPlugMap.enterMappedData(self.measPosInds, throughputList, self.plPlugMapInds)
         self.plPlugMap.enterMappedData(self.detectedFiberList)
-        self.plPlugMap.writeMe(scanDir, 55555)
+        self.plPlugMap.writeMe()
         self.plPlugMap.plotMissing()
 
     def getThroughputList(self):

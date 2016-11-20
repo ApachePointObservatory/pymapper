@@ -129,8 +129,8 @@ class MotorController(object):
     def disconnect(self):
         print("disconnecting from ASCII server")
         return self.protocol.transport.loseConnection()
-        # print("killing twisted event loop")
-        # reactor.stop()
+        print("killing twisted event loop")
+        reactor.stop()
 
     def connFailed(self, failure):
         print("conn failed errback")
