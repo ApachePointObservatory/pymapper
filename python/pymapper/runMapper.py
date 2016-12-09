@@ -27,8 +27,8 @@ from . import plt
 
 MOTOR_IP = "139.229.101.114"
 MOTOR_PORT = 15000
-
-BASEDIR = os.path.join(os.path.expanduser("~"), "scan", "%i"%floor(datetime.now().mjd))
+MJD = floor(datetime.now().mjd)
+BASEDIR = os.path.join(os.path.expanduser("~"), "scan", "%i"%MJD)
 if not os.path.exists(BASEDIR):
     os.makedirs(BASEDIR)
 # check for existing scan directories
@@ -180,7 +180,7 @@ def reprocessImgs(args):
     # create directory to hold camera images
     # note all previous images will be removed if image dir is not empty
     camera = Camera(scanDir, startPos, endPos, scanSpeed)
-    solvePlate = partial(_solvePlate, scanDir=scanDir, plateID=args.plateID, plot=args.plotDetections, plugMapPath=args.plPlugMap)
+    solvePlate = partial(_solvePlate, scanDir=scanDir, plateID=args.plateID, plot=args.plotDetections)
     camera.doneProcessingCallback(solvePlate)
     camera.reprocessImages()
 
@@ -200,9 +200,9 @@ def runScan(args):
     if not os.path.exists(plateDir):
         os.makedirs(plateDir)
     # now determine how many scans already exist for this plate
-    for scanNum in range(1,10000):
-        scanDir = os.path.join(plateDir, "fscan%i"%scanNum)
-        if not os.path.exists(scanNum):
+    for fscanID in range(1,10000):
+        scanDir = os.path.join(plateDir, "fscan%i"%fscanID)
+        if not os.path.exists(scanDir):
             break
     os.makedirs(scanDir)
 
@@ -245,7 +245,7 @@ def runScan(args):
 
     moveMotor = partial(motorController.scan, callFunc=camera.stopAcquisition)
     beginImgAcquisition = partial(camera.beginAcquisition, callFunc=moveMotor)
-    solvePlate = partial(_solvePlate, scanDir=scanDir, plateID=plateID, plot=args.plotDetections, plugMapPath=args.plPlugMap)
+    solvePlate = partial(_solvePlate, scanDir, plateID, cartID, fscanID, MJD, plot=args.plotDetections)
     camera.doneProcessingCallback(solvePlate)
     motorController.addReadyCallback(beginImgAcquisition)
     motorController.connect()

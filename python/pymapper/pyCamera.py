@@ -8,6 +8,19 @@ import time
 import pymba
 import shutil
 
+# import PyGuide
+
+# # CCDInfo = PyGuide.CCDInfo(bias=50, readNoise=10, ccdGain=1)
+# CCDInfo = PyGuide.CCDInfo(bias=1, readNoise=0, ccdGain=1)
+# # pyguide mask
+# PyGuideMask = numpy.zeros((960,960))
+# midPix = 960/2.
+# for x in range(960):
+#     for y in range(960):
+#         pixRad = numpy.sqrt((x-midPix)**2+(y-midPix)**2)
+#         if pixRad > midPix:
+#             PyGuideMask[x,y]=1
+
 class VimbaConfig(object):
     RW = "R/W"
     Integer = "Integer"
@@ -64,53 +77,51 @@ class VimbaConfig(object):
                 print("unknown feature type: %s: %s"%(name, featureType))
                 continue
 
-class Timer(object):
+
+class Globals(object):
     def __init__(self):
-        self.tstart = numpy.nan
+        self.configFile = os.path.join(os.getenv("PYMAPPER_DIR"), "etc/mapperCamConfig.xml")
+        self.cameraConfig = VimbaConfig(self.configFile)
+        self.cameraSettings = self.cameraConfig.allSettings
+        self.tstart = -1
+        self.imgSaveDir = None
+        self.exptime = self.cameraSettings["ExposureTimeAbs"]
+        self.gain = self.cameraSettings["GainRaw"]
+        if self.cameraSettings["PixelFormat"] == "Mono8":
+            self.numpydtype = numpy.uint8
+        else:
+            self.numpydtype = numpy.uint16
+        self.frameNum = 0
+
     def elapsed(self):
         return time.time() - self.tstart
 
-timer = Timer()
-
-configFile = os.path.join(os.getenv("PYMAPPER_DIR"), "etc/mapperCamConfig.xml")
-
-cameraConfig = VimbaConfig(configFile)
-cameraSettings = cameraConfig.allSettings
-
-EXPTIME = cameraSettings["ExposureTimeAbs"]
-GAIN = cameraSettings["GainRaw"]
-if cameraSettings["PixelFormat"] == "Mono8":
-    numpydtype = numpy.uint8
-else:
-    numpydtype = numpy.uint16
-frameNum = 0
-
-# imgSaveDir = os.path.join(os.path.expanduser("~"), "tmpMapImg")
-imgSaveDir = None
-
+GLOBALS = Globals()
 # if os.path.exists(imgSaveDir):
 #     # delete it to ensure it is empty!
 #     shutil.rmtree(imgSaveDir)
 # os.makedirs(imgSaveDir)
 
 def frameCB(frame):
-    global frameNum
     imgData = numpy.ndarray(buffer = frame.getBufferByteData(),
-                           dtype = numpydtype,
+                           dtype = GLOBALS.numpydtype,
                            shape = (frame.height,
                                     frame.width)
                             )
-    frameNum += 1
-    if frameNum % 100 == 0:
-        print("fps: %.4f, imgNum: %i"%(frameNum/timer.elapsed(), frameNum))
-    strNum = ("%i"%frameNum).zfill(6)
-    filename = os.path.join(imgSaveDir, "img%s.fits"%strNum)
+    # pyGuideCentroids = PyGuide.findStars(imgData, PyGuideMask, None, CCDInfo)[0]
+    GLOBALS.frameNum += 1
+    elapsedTime = GLOBALS.elapsed()
+    if GLOBALS.frameNum % 100 == 0:
+        print("fps: %.4f, imgNum: %i"%(GLOBALS.frameNum/elapsedTime, GLOBALS.frameNum))
+    strNum = ("%i"%GLOBALS.frameNum).zfill(6)
+    filename = os.path.join(GLOBALS.imgSaveDir, "img%s.fits"%strNum)
     hdu = fits.PrimaryHDU(imgData)
     hdulist = fits.HDUList([hdu])
     prihdr = hdulist[0].header
-    prihdr["tstamp"] = time.time(), "UNIX time of exposure"
-    prihdr["exptime"] = EXPTIME, "EXPTIME micro seconds"
-    prihdr["gain"] = GAIN, "GAIN value in decibels"
+    prihdr["tstamp"] = elapsedTime, "UNIX time of exposure"
+    prihdr["exptime"] = GLOBALS.exptime, "EXPTIME micro seconds"
+    prihdr["gain"] = GLOBALS.gain, "GAIN value in decibels"
+    prihdr["fnum"] = GLOBALS.frameNum, "GAIN value in decibels"
     hdulist.writeto(filename)
     hdulist.close()
     frame.queueFrameCapture(frameCB)
@@ -118,25 +129,22 @@ def frameCB(frame):
     # del hdulist
     # del prihdr
 
-def loadConfig(camera):
-    """Explicitly set all configuation specified in the config obj
-    """
-    for key, val in cameraSettings.iteritems():
-        print("setting: %s = %s"%(key, str(val)))
-        setattr(camera, key, val)
-
 vimba = pymba.Vimba()
 vimba.startup()
 system = vimba.getSystem()
 system.runFeatureCommand("GeVDiscoveryAllOnce")
-camera = vimba.getCamera(cameraConfig.cameraID)
+camera = vimba.getCamera(GLOBALS.cameraConfig.cameraID)
 camera.openCamera()
-loadConfig(camera)
+# load config settings
+for key, val in GLOBALS.cameraSettings.iteritems():
+    print("setting: %s = %s"%(key, str(val)))
+    setattr(camera, key, val)
 frames = [
     camera.getFrame(),
     camera.getFrame(),
-    camera.getFrame()
+    camera.getFrame(),
     ]
+
 for frame in frames:
     frame.announceFrame()
     frame.queueFrameCapture(frameCB)
@@ -145,16 +153,19 @@ camera.startCapture()
 def startCapture(imgSaveDir):
     """capture shortcut, don't save
     """
-    global imgSaveDir
-    imgSaveDir = imgSaveDir
-    timer.tstart = time.time()
+    print("starting image capture")
+    GLOBALS.imgSaveDir = imgSaveDir
+    GLOBALS.tstart = time.time()
     camera.runFeatureCommand("AcquisitionStart")
 
 def stopCapture():
-    timer.tstart = numpy.nan
+    print("stopping image capture")
+    GLOBALS.tstart = -1
     camera.runFeatureCommand("AcquisitionStop")
     camera.endCapture()
     camera.revokeAllFrames()
+    vimba.shutdown()
+
 
 if __name__ == "__main__":
     imgSaveDir = os.path.join(os.path.expanduser("~"), "tmpMapImg")
