@@ -99,17 +99,18 @@ class SlitheadSolver(object):
     def hack(self):
         self.nomMotorPos = numpy.asarray(self.nomMotorPos) * 1.05 #- 4
 
-    def plotSolution(self, scanDir):
+    def plotSolution(self, scanDir=None):
         # scale rawFluxes
         # rawFluxes = (self.rawFluxes - numpy.median(self.rawFluxes))
         # scale by 3/4 the max value
         scaleValue = sorted(self.rawFluxes)[int(len(self.rawFluxes)*3/4)]
         rawFluxes = 0.5*self.rawFluxes / scaleValue
-        modelMotorPos = numpy.arange(self.rescaledMotorPositions[0], self.rescaledMotorPositions[-1], FIBERDIAMETER/30)
+        modelMotorPos = numpy.arange(self.rescaledMotorPositions[0], self.rescaledMotorPositions[-1], -1*FIBERDIAMETER/30)
         unscaledDetections = numpy.asarray([det.motorPos for det in self.detectedFiberList])
         fiberNums = [det.getSlitIndex() for det in self.detectedFiberList]
         modeledFlux = [self.fluxFromMotorPos(motorPos) for motorPos in modelMotorPos]
         fig = plt.figure(figsize=(200,30))
+        # import pdb; pdb.set_trace()
         slitModel, = plt.plot(modelMotorPos, modeledFlux, '-k', alpha=0.5, linewidth=3)
         scaledRaw, = plt.plot(self.rescaledMotorPositions, rawFluxes, '.-g', alpha=0.5, linewidth=3)
         scaledDetections, = plt.plot(self.rescaledMotorPositions, self.normalizedFlux, '.-b', alpha=0.5, linewidth=3)
@@ -121,7 +122,10 @@ class SlitheadSolver(object):
         scaledCenters, = plt.plot(self.scaledDetections, 0.51*numpy.ones(len(self.scaledDetections)), 'or')
         for x, fiberNum in itertools.izip(self.scaledDetections, fiberNums):
             plt.text(x, 0.52, str(fiberNum+1), horizontalalignment='center', fontsize=8)
-        nfn = os.path.join(scanDir, "slitheadSolution.png")
+        if scanDir:
+            nfn = os.path.join(scanDir, "slitheadSolution.png")
+        else:
+            nfn = "slitheadSolution.png"
         plt.legend(
             [slitModel, scaledRaw, scaledDetections, unscaledCenters, scaledCenters],
             ["Gaussian Slit Model", "Fit, Thresholded, Normed Total Counts In Frame", "Fit, Normed Detection Counts", "Unfit Detection Centers", "Fit Detection Centers"],
@@ -136,7 +140,7 @@ class SlitheadSolver(object):
         missingFiberStr = ",".join([str(fiber) for fiber in self.missingFibers])
         plt.text(meanX, maxY - 0.15, "Missing Fiber Numbers: %s"%missingFiberStr, horizontalalignment="center", fontsize=30)
         plt.text(meanX, maxY - 0.05, "Fit -- Scale: %.4f Offset: %.4f (mm)"%(self.scale, self.offset), horizontalalignment="center", fontsize=30)
-        # fig.savefig(nfn); plt.close(fig)
+        fig.savefig(nfn); plt.close(fig)
         # plt.show()
 
 
@@ -155,7 +159,7 @@ class SlitheadSolver(object):
         return fiberNums, motorPositions
 
     def generateDetectionTrace(self):
-        normalizedFlux = numpy.zeros(self.centroidList[-1]["frame"])
+        normalizedFlux = numpy.zeros(self.centroidList[-1]["frame"]-1)
         rawFlux = numpy.array([cent["totalCounts"] for cent in self.centroidList])
         detMotorPos = numpy.array([cent["motorPos"] for cent in self.centroidList])
         for detection in self.detectedFiberList:
@@ -355,8 +359,10 @@ class FocalSurfaceSolver(object):
         # pyguide convention +y goes down the image.  this is bad, flip it here
         # for matching to the plPlugMap focal values
         # also determine the rough plate center, averaging x and y
-        measXPos = xPos - numpy.mean(xPos)
-        measYPos = -1*(yPos - numpy.mean(yPos))
+        # measXPos = xPos - numpy.mean(xPos)
+        measXPos = -1*(xPos - numpy.mean(xPos))
+        # measYPos = -1*(yPos - numpy.mean(yPos))
+        measYPos = yPos - numpy.mean(yPos)
         # measYPos = measYPos - numpy.mean(measYPos)
         # in polar coords..
         measR = numpy.sqrt(measXPos**2+measYPos**2)
@@ -372,11 +378,29 @@ class FocalSurfaceSolver(object):
         measYPos = measR * numpy.sin(measTheta)
         return measXPos, measYPos
 
+    def nextPlotFilename(self):
+        baseName = "transrotscale"
+        ii = 0
+        while True:
+            zfillNum = str(ii).zfill(2)
+            filename = os.path.join(self.scanDir, baseName+"%s.png"%zfillNum)
+            if os.path.exists(filename):
+                ii += 1
+                continue
+            else:
+                break
+        return filename
+
+
     def plot(self, measx, measy, block=False):
-        plt.figure()
-        plt.plot(self.plPlugMap.xPos, self.plPlugMap.yPos, 'or')
-        plt.plot(measx, measy, 'ok')
+        fig = plt.figure(figsize=(30,30))
+        plt.plot(self.plPlugMap.xPos, self.plPlugMap.yPos, 'or', alpha=0.5)
+        plt.plot(measx, measy, 'ob', alpha=0.5)
+        plt.xlim([-400, 400])
+        plt.ylim([-400, 400])
+        fig.savefig(self.nextPlotFilename())
         plt.show(block=block)
+        plt.close(fig)
 
     def fitTransRotScale(self):
         """Use a minimizer to get translation, rotation and scale close enough
@@ -525,6 +549,25 @@ class FocalSurfaceSolver(object):
         transRotScaleSolution = fitTransRotScale.model.getTransRotScale()
         # is this the same solution as the previous? if so complain now (we aren't getting anywhere)
         # @todo, implement later!!!!
+        # if previous solution is same as new solution ==  no change, try to eliminate false positives?
+        trans, rot, scale = transRotScaleSolution
+        if trans[0] == trans[1] == rot == 0 and scale == 1:
+            # find n(multimatch) number of points furthest from any neighbor
+            # and remove them
+            print("no change in transrotscale, removing multimatches")
+            distList = [0]*len(multiMatchInds)
+            maxInds = [-1]*len(multiMatchInds)
+            for measInd, (xPos, yPos) in enumerate(itertools.izip(xArray, yArray)):
+                # copied from above, break out?
+                dist = numpy.min(numpy.sqrt((self.plPlugMap.xPos - xPos)**2+(self.plPlugMap.yPos - yPos)**2))
+                if dist > numpy.max(distList):
+                    minInd = numpy.argmin(distList)
+                    distList[minInd] = dist
+                    maxInds[minInd] = measInd
+            for measInd, dist in itertools.izip(maxInds, distList):
+                print("removing detection %i with nearest neighbor dist %.4f"%(measInd, dist))
+            raise RuntimeError("Implement me!?")
+
         print("iter", currentCall, "fit model", transRotScaleSolution)
         # apply this new (tweaked) model to every point and call this routine again
         # (until we get all matches found)

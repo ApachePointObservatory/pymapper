@@ -587,7 +587,14 @@ def sortDetections(brightestCentroidList, plot=False, minCounts=MINCOUNTS, minSe
             fig.savefig(nfn); plt.close(fig)    # close the figure
         # if crashMe:
         #     raise RuntimeError("Non-unique detection!!!!")
-    return detectedFibers
+    # throw out any false detections (must show up in at least two consecutive frames)
+    filteredDetectedFibers = []
+    for detection in detectedFibers:
+        if len(detection.frames) < 3:
+            print("Removing false detecion in frames:", detection.frames)
+            continue
+        filteredDetectedFibers.append(detection)
+    return filteredDetectedFibers
 
 if __name__ == "__main__":
     pass
