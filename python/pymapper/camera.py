@@ -3,6 +3,7 @@
 from __future__ import division, absolute_import
 
 import os
+import sys
 import glob
 import subprocess
 import pickle
@@ -11,6 +12,7 @@ import logging
 import traceback
 from multiprocessing import Pool
 import multiprocessing as mp
+import traceback
 
 import shutil
 
@@ -246,7 +248,9 @@ class Camera(object):
         totalTime = time.time()-self.processingStart
         print("total time: %.2f"%totalTime)
         print("processed %.2f frames per second"% (len(self.centroidList)/totalTime))
-        pickleCentroids(self.centroidList, self.imageDir)
+        # clean up centroid list
+        centroidList = [centroid for centroid in self.centroidList if centroid is not None]
+        pickleCentroids(centroidList, self.imageDir)
         if self.procImgCall is not None:
             self.procImgCall()
 
@@ -289,6 +293,9 @@ class Camera(object):
         # don't process more than 50 images at a time
         unprocessedFileList = unprocessedFileList[:50]
         if unprocessedFileList:
+            # debut
+            # print("testing img: ", unprocessedFileList[0])
+            # g = processImage(unprocessedFileList[0])
             print("processing images %s to %s"%tuple([os.path.split(_img)[-1] for _img in [unprocessedFileList[0], unprocessedFileList[-1]]]))
             multiprocessImage(unprocessedFileList, self.multiprocessImageLoop, block=False)
         else:
@@ -305,6 +312,7 @@ class Camera(object):
 
 def multiprocessImage(imageFileList, callFunc=None, block=False):
     # may want to try map_async
+    print("multiprocessImage")
     p = Pool(5)
     if block:
         output = p.map(processImage, imageFileList)
@@ -320,57 +328,61 @@ def processImage(imageFile):
     @param[in] imageFile. String
 
     """
-    # global TZERO
-    global MOTORSPEED
-    global MOTORSTART
-    global MOTOREND
-    motorDirection = numpy.sign(MOTOREND-MOTORSTART)
-    # frame = int(imageFile.split(IMGBASENAME)[-1].split(".")[0])
-    # timestamp = os.path.getmtime(imageFile) - TZERO
-    frame = None
-    timestamp = None
-    counts = None
-    xyCtr = None
-    rad = None
-    totalCounts = None
+    try:
+        # global TZERO
+        global MOTORSPEED
+        global MOTORSTART
+        global MOTOREND
+        motorDirection = numpy.sign(MOTOREND-MOTORSTART)
+        # frame = int(imageFile.split(IMGBASENAME)[-1].split(".")[0])
+        # timestamp = os.path.getmtime(imageFile) - TZERO
+        frame = None
+        timestamp = None
+        counts = None
+        xyCtr = None
+        rad = None
+        totalCounts = None
 
-    # put some filtering here
-    # try:
+        # put some filtering here
+        # try:
 
-    fitsImg = fits.open(imageFile)
-    timestamp = fitsImg[0].header["TSTAMP"]
-    frame = fitsImg[0].header["FNUM"]
-    imgData = fitsImg[0].data
-    fitsImg.close()
+        fitsImg = fits.open(imageFile)
+        timestamp = fitsImg[0].header["TSTAMP"]
+        frame = fitsImg[0].header["FNUM"]
+        imgData = fitsImg[0].data
+        fitsImg.close()
 
-    if frame % 100 == 0:
-        print("processing frame number %i"%frame)
-    flatImg = imgData.flatten()
-    thresh = flatImg[numpy.nonzero(flatImg>ROUGH_THRESH)]
-    # print("median %.4f thresh %.4f  %i pixels over thresh"%(medianValue, sigma, len(thresh)))
-    totalCounts = numpy.sum(thresh)
+        if frame % 100 == 0:
+            print("processing frame number %i"%frame)
+        flatImg = imgData.flatten()
+        thresh = flatImg[numpy.nonzero(flatImg>ROUGH_THRESH)]
+        # print("median %.4f thresh %.4f  %i pixels over thresh"%(medianValue, sigma, len(thresh)))
+        totalCounts = numpy.sum(thresh)
 
-    pyGuideCentroids = PyGuide.findStars(imgData, PyGuideMask, None, CCDInfo)[0]
-    # did we get any centroids?
-    if pyGuideCentroids:
-        counts = pyGuideCentroids[0].counts
-        xyCtr = pyGuideCentroids[0].xyCtr
-        rad = pyGuideCentroids[0].rad
-    del imgData # paranoia
+        pyGuideCentroids = PyGuide.findStars(imgData, PyGuideMask, None, CCDInfo)[0]
+        # did we get any centroids?
+        if pyGuideCentroids:
+            counts = pyGuideCentroids[0].counts
+            xyCtr = pyGuideCentroids[0].xyCtr
+            rad = pyGuideCentroids[0].rad
+        del imgData # paranoia
 
-    # except Exception:
-    #     print("some issue with pyguide on img (skipping): ", imageFile)
-    #     traceback.print_exc()
+        # except Exception:
+        #     print("some issue with pyguide on img (skipping): ", imageFile)
+        #     traceback.print_exc()
 
-    return dict((
-                    ("imageFile", imageFile),
-                    ("counts", counts),
-                    ("xyCtr", xyCtr),
-                    ("rad", rad),
-                    ("motorPos", MOTORSTART + motorDirection*MOTORSPEED*timestamp),
-                    ("frame", frame),
-                    ("totalCounts", totalCounts),
-                ))
+        return dict((
+                        ("imageFile", imageFile),
+                        ("counts", counts),
+                        ("xyCtr", xyCtr),
+                        ("rad", rad),
+                        ("motorPos", MOTORSTART + motorDirection*MOTORSPEED*timestamp),
+                        ("frame", frame),
+                        ("totalCounts", totalCounts),
+                    ))
+    except Exception:
+        print("process Image failed:")
+        traceback.print_exc(file=sys.stdout)
 
 def processImage_(args):
     out = [None]
@@ -578,7 +590,4 @@ def sortDetections(brightestCentroidList, plot=False, minCounts=MINCOUNTS, minSe
     return detectedFibers
 
 if __name__ == "__main__":
-    camera = Camera()
-    camera.start()
-    reactor.callLater(3*60., camera.stop)
-    reactor.run()
+    pass
