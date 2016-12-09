@@ -50,7 +50,7 @@
         <Feature Name="GainAutoOutliers" Type="Integer" Access="R/W">0</Feature>
         <Feature Name="GainAutoRate" Type="Integer" Access="R/W">100</Feature>
         <Feature Name="GainAutoTarget" Type="Integer" Access="R/W">50</Feature>
-        <Feature Name="GainRaw" Type="Integer" Access="R/W">20</Feature>
+        <Feature Name="GainRaw" Type="Integer" Access="R/W">10</Feature>
         <Feature Name="GevHeartbeatInterval" Type="Integer" Access="R/W">1450</Feature>
         <Feature Name="GevHeartbeatTimeout" Type="Integer" Access="R/W">3000</Feature>
         <Feature Name="GevSCPSPacketSize" Type="Integer" Access="R/W">8228</Feature>
