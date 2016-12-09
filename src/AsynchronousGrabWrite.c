@@ -74,6 +74,7 @@ char fileNameBuf[30]; //will hold updated filenames (with numbers attached)
 int frameNumber = 1; //iterator
 double frameTimeBegin;
 double lastFrameTime;
+double ExposureTimeAbs = 14000;
 
 #ifdef WIN32
     HANDLE          g_hMutex = INVALID_HANDLE_VALUE;
@@ -143,7 +144,7 @@ VmbError_t  ConfigureCamera( VmbHandle_t pCameraHandle)
     int BinningHorizontal = 1;
     int BinningVertical = 1;
     int GVSPPacketSize = 500;
-    double ExposureTimeAbs = 12000;
+    // double ExposureTimeAbs = 14000; set globally (maybe eventually all) so it can go in header
     const char* ExposureMode = "Timed";
 
     // Set ExposureTimeAbs
@@ -365,6 +366,10 @@ VmbError_t ProcessFrame( VmbFrame_t * pFrame )
          printerror( status );
 
     if ( fits_update_key(fptr, TUINT, "FNum", &frameNumber,
+         "frame number", &status) )
+         printerror( status );
+
+    if ( fits_update_key(fptr, TDOUBLE, "EXPTIME", &ExposureTimeAbs,
          "frame number", &status) )
          printerror( status );
 
