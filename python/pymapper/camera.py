@@ -29,7 +29,11 @@ from . import plt
 
 import cProfile, pstats, StringIO
 
-from .pyCamera import startCapture, stopCapture
+try:
+    from .pyCamera import startCapture, stopCapture
+except:
+    print("Warning, failed to find pymba!")
+    startCapture, stopCapture = None, None
 
 # how to deal with hot pixels?
 """

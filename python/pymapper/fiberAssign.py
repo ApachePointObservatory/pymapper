@@ -159,7 +159,8 @@ class SlitheadSolver(object):
         return fiberNums, motorPositions
 
     def generateDetectionTrace(self):
-        normalizedFlux = numpy.zeros(self.centroidList[-1]["frame"]-1)
+        #normalizedFlux = numpy.zeros(self.centroidList[-1]["frame"]-1)
+        normalizedFlux = numpy.zeros(self.centroidList[-1]["frame"])
         rawFlux = numpy.array([cent["totalCounts"] for cent in self.centroidList])
         detMotorPos = numpy.array([cent["motorPos"] for cent in self.centroidList])
         for detection in self.detectedFiberList:
