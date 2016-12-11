@@ -159,8 +159,8 @@ class SlitheadSolver(object):
         return fiberNums, motorPositions
 
     def generateDetectionTrace(self):
-        #normalizedFlux = numpy.zeros(self.centroidList[-1]["frame"]-1)
-        normalizedFlux = numpy.zeros(self.centroidList[-1]["frame"])
+        normalizedFlux = numpy.zeros(self.centroidList[-1]["frame"]-1)
+        # normalizedFlux = numpy.zeros(self.centroidList[-1]["frame"])
         rawFlux = numpy.array([cent["totalCounts"] for cent in self.centroidList])
         detMotorPos = numpy.array([cent["motorPos"] for cent in self.centroidList])
         for detection in self.detectedFiberList:
@@ -265,14 +265,24 @@ class PlPlugMap(object):
         # determine any existing scans
         fscanIDstr = ("%i"%self.fscanID).zfill(2)
         fileName = "plPlugMapM-%i-%i-%s.par"%(self.plateID, self.fscanMJD, fscanIDstr)
+        filePath = os.path.join(self.scanDir, fileName)
+        self.plPlugMap.write(filePath)
+        self.updateHeader(filePath)
+
+    def updateHeader(self, plPlugPath):
+        """This is necessary because it seems calling plPlugMap.append(updateDict) erases
+        the previously entered fiber map!  WTF?
+        """
         updateDict = {
             "fscanMJD": self.fscanMJD,
             "fscanId": self.fscanID,
             "cartridgeId": self.cartID,
             "instruments": "APOGEE_SOUTH"
             }
-        self.plPlugMap.append(updateDict)
-        self.plPlugMap.write(os.path.join(self.scanDir, fileName))
+        plPlugMap = yanny(filename=plPlugPath, np=True)
+        plPlugMap.append(updateDict)
+        os.remove(plPlugPath)
+        plPlugMap.write(plPlugPath)
 
     def plotMissing(self):
         tabHeight = 0.5 * MMPERINCH
@@ -524,6 +534,7 @@ class FocalSurfaceSolver(object):
             self.measYpos = yArray
             errArr = []
             for measPosInd, plInd in itertools.izip(measPosInds, plPlugMapInds):
+                # print("plInd", plInd)
                 detectedFiber = self.detectedFiberList[measPosInd]
                 x = xArray[measPosInd]
                 y = yArray[measPosInd]
