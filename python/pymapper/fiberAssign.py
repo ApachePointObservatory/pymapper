@@ -12,7 +12,6 @@ from __future__ import division, absolute_import
 import os
 import itertools
 import glob
-import logging
 
 import numpy
 from scipy.optimize import fmin
@@ -159,8 +158,8 @@ class SlitheadSolver(object):
         return fiberNums, motorPositions
 
     def generateDetectionTrace(self):
-        normalizedFlux = numpy.zeros(self.centroidList[-1]["frame"]-1)
-        # normalizedFlux = numpy.zeros(self.centroidList[-1]["frame"])
+        # normalizedFlux = numpy.zeros(self.centroidList[-1]["frame"]-1)
+        normalizedFlux = numpy.zeros(self.centroidList[-1]["frame"])
         rawFlux = numpy.array([cent["totalCounts"] for cent in self.centroidList])
         detMotorPos = numpy.array([cent["motorPos"] for cent in self.centroidList])
         for detection in self.detectedFiberList:
@@ -514,7 +513,6 @@ class FocalSurfaceSolver(object):
             if plInd in plPlugMapInds:
                 # this index was already matched to another
                 # put it in the multimatch index
-                print("got a multimatch")
                 multiMatchInds.append(plInd)
                 badIndex = plPlugMapInds.index(plInd)
                 plPlugMapInds.pop(badIndex)

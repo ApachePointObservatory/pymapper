@@ -3,6 +3,7 @@
 from __future__ import division, absolute_import
 
 from functools import partial
+import subprocess
 
 import argparse
 import time
@@ -11,7 +12,6 @@ from math import floor
 import os
 import glob
 import sys
-import logging
 
 from twisted.internet import reactor
 
@@ -42,6 +42,46 @@ tstart = None
 """
 todo: add re-detect/re-solve options
 """
+
+class LogStdOut(object):
+    def __init__(self, filename):
+        """Simply logs all standard out to a log
+        """
+        self.terminal = sys.stdout
+        self.log = open(filename, "w")
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)
+
+    def flush(self):
+        #this flush method is needed for python 3 compatibility.
+        #this handles the flush command by doing nothing.
+        #you might want to specify some extra behavior here.
+        pass
+
+class LogStdErr(object):
+    def __init__(self, filename):
+        """Simply logs all standard out to a log
+        """
+        self.terminal = sys.stderr
+        self.log = open(filename, "w")
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)
+
+    def flush(self):
+        #this flush method is needed for python 3 compatibility.
+        #this handles the flush command by doing nothing.
+        #you might want to specify some extra behavior here.
+        pass
+
+def configureLogging(scanDir):
+    logfile = os.path.join(scanDir, "scan.log")
+    errfile = os.path.join(scanDir, "scan_err.log")
+    sys.stdout = LogStdOut(logfile)
+    sys.stderr = LogStdErr(errfile)
 
 def query_yes_no(question, default="yes"):
     """Ask a yes/no question via raw_input() and return their answer.
@@ -99,25 +139,25 @@ def getExistingImgs(scanDir):
     imgs = glob.glob(os.path.join(scanDir, "%s*.%s"%(IMGBASENAME, IMGEXTENSION)))
     return imgs
 
-def configureLogging(scanDir, overwrite=True):
-    """if overwrite is true, remove any existing logfile,
-    else append to any existing one
-    """
-    # configure logging
-    logfile = os.path.join(scanDir, "scan.log")
+# def configureLogging(scanDir, overwrite=True):
+#     """if overwrite is true, remove any existing logfile,
+#     else append to any existing one
+#     """
+#     # configure logging
+#     logfile = os.path.join(scanDir, "scan.log")
 
-    if os.path.exists(logfile) and overwrite:
-        os.remove(logfile)
+#     if os.path.exists(logfile) and overwrite:
+#         os.remove(logfile)
 
-    root = logging.getLogger()
-    root.setLevel(logging.DEBUG)
+#     root = logging.getLogger()
+#     root.setLevel(logging.DEBUG)
 
-    ch = logging.StreamHandler(sys.stdout)
-    ch.setLevel(logging.DEBUG)
-    # formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    # ch.setFormatter(formatter)
-    root.addHandler(ch)
-    return logfile
+#     ch = logging.StreamHandler(sys.stdout)
+#     ch.setLevel(logging.DEBUG)
+#     # formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+#     # ch.setFormatter(formatter)
+#     root.addHandler(ch)
+#     return logfile
 
 def _solvePlate(scanDir, plateID, cartID, fscanID, fscanMJD, plot=False, plugMapPath=None):
     # global pr
@@ -144,6 +184,10 @@ def _solvePlate(scanDir, plateID, cartID, fscanID, fscanMJD, plot=False, plugMap
     assert os.path.exists(plugMapPath)
     fss = FocalSurfaceSolver(detectedFiberList, plugMapPath, scanDir, cartID, fscanID, fscanMJD)
     print("mapping done: took %.2f seconds"%(time.time()-tstart))
+    if shs.missingFibers:
+        subprocess.call("gnome-open %s/unplugged.png"%(scanDir), shell = True)
+    print("killing all python processes")
+    subprocess.call("killall -9 python", shell=True)
     # plt.show()
 
 def resolvePlate(args):
@@ -171,7 +215,7 @@ def reprocessImgs(args):
     imgs = getExistingImgs(scanDir)
     if not imgs:
         raise RuntimeError("Scan directory doesn't contain existing imgs, cannot --reprocess!")
-    logfile = configureLogging(scanDir, overwrite=False)
+    # logfile = configureLogging(scanDir, overwrite=False)
     print("reprocessing images in %s"%scanDir)
     scanParams = getScanParams(os.path.join(scanDir, "scanParams.par"))
     startPos = scanParams["start"]
@@ -205,18 +249,7 @@ def runScan(args):
         if not os.path.exists(scanDir):
             break
     os.makedirs(scanDir)
-
-    logfile = os.path.join(scanDir, "scan.log")
-    logging.basicConfig(filename=logfile, level=logging.DEBUG)
-
-    root = logging.getLogger()
-    root.setLevel(logging.DEBUG)
-
-    ch = logging.StreamHandler(sys.stdout)
-    ch.setLevel(logging.DEBUG)
-    # formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    # ch.setFormatter(formatter)
-    root.addHandler(ch)
+    configureLogging(scanDir)
 
     print("scanDir: %s"%scanDir)
     print("plate ID: %i"%args.plateID)

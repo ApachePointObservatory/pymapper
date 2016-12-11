@@ -8,7 +8,6 @@ import glob
 import subprocess
 import pickle
 import time
-import logging
 import traceback
 from multiprocessing import Pool
 import multiprocessing as mp
@@ -563,7 +562,8 @@ def sortDetections(brightestCentroidList, plot=False, minCounts=MINCOUNTS, minSe
                 if prevDetection.belongs2me(brightestCentroid, minSep):
                     if isNewDetection == False:
                         crashMe = True
-                        logging.warn("bad bad, crash me! in %s"%brightestCentroid["imageFile"])
+                        sys.stderr.write("bad bad, crash me! in %s"%brightestCentroid["imageFile"])
+                        # logging.warn()
                     # print("previous detection!!!", brightestCentroid.xyCtr)
                     isNewDetection = False
                     # print("previous detection", os.path.split(imageFile)[-1], prevDetection.imageFiles)

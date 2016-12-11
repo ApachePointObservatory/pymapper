@@ -2,8 +2,6 @@
 """
 from __future__ import division, absolute_import
 
-import logging
-
 from twisted.internet.protocol import Protocol, ClientFactory
 from twisted.internet.endpoints import TCP4ClientEndpoint
 from twisted.internet import reactor
