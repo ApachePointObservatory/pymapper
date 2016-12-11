@@ -271,7 +271,7 @@ class Camera(object):
                 reactor.callLater(0., self.acquisitionCB)
             # the first image is here, we're free to start
             # processing them
-            reactor.callLater(0., self.multiprocessImageLoop)
+            reactor.callLater(1., self.multiprocessImageLoop)
             self.processingStart = time.time()
         else:
             # first image not seen yet try again
@@ -301,6 +301,8 @@ class Camera(object):
             # print("testing img: ", unprocessedFileList[0])
             # g = processImage(unprocessedFileList[0])
             print("processing images %s to %s"%tuple([os.path.split(_img)[-1] for _img in [unprocessedFileList[0], unprocessedFileList[-1]]]))
+            # race condition if fits file is empty or not written fully yet
+            # call with a minute delay
             multiprocessImage(unprocessedFileList, self.multiprocessImageLoop, block=False)
         else:
             # no files to process.

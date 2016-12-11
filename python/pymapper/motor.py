@@ -161,6 +161,10 @@ class MotorController(object):
         # self.getStatus(callFunc=self.checkHomeThenMove)
         self.setSpeed(QUICKSPEED)
         self.move(self.startPos, callFunc=self.disconnect)
+        # try killin twisted event loop now?
+        # self.protocol.transport.loseConnection()
+        # reactor.stop()
+
 
     def checkHomeThenMove(self):
         if not self.isHomed:
