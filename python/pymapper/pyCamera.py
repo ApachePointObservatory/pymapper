@@ -1,4 +1,4 @@
-from __future__ import absolute_import, division, print_function
+from __future__ import absolute_import, division#, print_function
 import os
 import xml.etree.ElementTree as ET
 import re
@@ -137,7 +137,7 @@ camera = vimba.getCamera(GLOBALS.cameraConfig.cameraID)
 camera.openCamera()
 # load config settings
 for key, val in GLOBALS.cameraSettings.iteritems():
-    print("setting: %s = %s"%(key, str(val)))
+    # print("setting: %s = %s"%(key, str(val)))
     setattr(camera, key, val)
 frames = [
     camera.getFrame(),

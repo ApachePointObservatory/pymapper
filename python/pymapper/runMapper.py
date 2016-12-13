@@ -77,9 +77,9 @@ class LogStdErr(object):
         #you might want to specify some extra behavior here.
         pass
 
-def configureLogging(scanDir):
-    logfile = os.path.join(scanDir, "scan.log")
-    errfile = os.path.join(scanDir, "scan_err.log")
+def configureLogging(scanDir, MJD, plateID, fscanID):
+    logfile = os.path.join(scanDir, "scan-%i-%i-fscan%i.log"%(MJD, plateID, fscanID))
+    errfile = os.path.join(scanDir, "scan_err-%i-%i-fscan%i.log"%(MJD, plateID, fscanID))
     sys.stdout = LogStdOut(logfile)
     sys.stderr = LogStdErr(errfile)
 
@@ -249,7 +249,7 @@ def runScan(args):
         if not os.path.exists(scanDir):
             break
     os.makedirs(scanDir)
-    configureLogging(scanDir)
+    configureLogging(scanDir, MJD, plateID, fscanID)
 
     print("scanDir: %s"%scanDir)
     print("plate ID: %i"%args.plateID)

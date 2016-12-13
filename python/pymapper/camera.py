@@ -29,10 +29,10 @@ from . import plt
 import cProfile, pstats, StringIO
 
 try:
-    from .pyCamera import startCapture, stopCapture
+    from .pyCamera import startCapture, stopCapture, GLOBALS, camera
 except:
     print("Warning, failed to find pymba!")
-    startCapture, stopCapture = None, None
+    startCapture, stopCapture, GLOBALS, camera = None, None, None, None
 
 # how to deal with hot pixels?
 """
@@ -201,6 +201,10 @@ class Camera(object):
         self.acquisionCB = None
         self.procImgCall = None
         self.centroidList = []
+        # print camera settings for log
+        print("Camera Settings:")
+        for key in GLOBALS.cameraSettings.keys():
+            print("camera.%s = %s"%(key, str(getattr(camera, key))))
 
     def doneProcessingCallback(self, callFunc):
         # to be called when all image processing is done,
@@ -387,7 +391,7 @@ def processImage(imageFile):
                     ))
     except Exception:
         print("process Image failed:")
-        traceback.print_exc(file=sys.stdout)
+        traceback.print_exc(file=sys.stderr)
 
 def processImage_(args):
     out = [None]
