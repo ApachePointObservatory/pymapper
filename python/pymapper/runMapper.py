@@ -43,6 +43,22 @@ tstart = None
 todo: add re-detect/re-solve options
 """
 
+def loadPlPlugMapM(plPlugMapPath):
+    """Loads a plPlugMapM file to the DB.
+    largely stolen from sdss_python_module/bin/plPlugMapM !!!
+    """
+
+    from sdss.internal.database.connections import LCODatabaseAdminTunnelConnection
+    from sdss.internal.database.apo.platedb.plPlugMapM import PlPlugMapMFile
+
+    if not os.path.exists(plPlugMapPath):
+        raise RuntimeError('file {0} cannot be found'.format(fScan))
+
+    plFile = PlPlugMapMFile(plPlugMapPath, verbose=True)
+    plFile.load(replace=True, active=True)
+
+    return
+
 class LogStdOut(object):
     def __init__(self, filename):
         """Simply logs all standard out to a log
@@ -186,6 +202,9 @@ def _solvePlate(scanDir, plateID, cartID, fscanID, fscanMJD, plot=False, plugMap
     print("mapping done: took %.2f seconds"%(time.time()-tstart))
     if shs.missingFibers:
         subprocess.call("gnome-open %s/unplugged.png"%(scanDir), shell = True)
+    # load the plPlugMap file as an active plugging in db
+    print("Loading plPlugMap in db, and making it active!!!")
+    loadPlPlugMapM(fss.plPlugMap.filePath)
     print("killing all python processes")
     subprocess.call("killall -9 python", shell=True)
     # plt.show()

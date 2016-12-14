@@ -225,6 +225,16 @@ class PlPlugMap(object):
         self.radPos = numpy.sqrt(self.xPos**2+self.yPos**2)
         self.plateID = int(self.plPlugMap["plateId"])
 
+    @property
+    def fileName(self):
+        fscanIDstr = ("%i"%self.fscanID).zfill(2)
+        fileName = "plPlugMapM-%i-%i-%s.par"%(self.plateID, self.fscanMJD, fscanIDstr)
+        return fileName
+
+    @property
+    def filePath(self):
+        return os.path.join(self.scanDir, self.fileName)
+
     def append(self, updateDict):
         self.plPlugMap.append(updateDict)
 
@@ -262,13 +272,10 @@ class PlPlugMap(object):
         # replace plPlugMapP-XXX with plPlugMapM-XXX
         # previousDirectory, filename = os.path.split(self.plPlugMap.filename)
         # determine any existing scans
-        fscanIDstr = ("%i"%self.fscanID).zfill(2)
-        fileName = "plPlugMapM-%i-%i-%s.par"%(self.plateID, self.fscanMJD, fscanIDstr)
-        filePath = os.path.join(self.scanDir, fileName)
-        self.plPlugMap.write(filePath)
-        self.updateHeader(filePath)
+        self.plPlugMap.write(self.filePath)
+        self.updateHeader() # reopens file to write header, dumb but
 
-    def updateHeader(self, plPlugPath):
+    def updateHeader(self):
         """This is necessary because it seems calling plPlugMap.append(updateDict) erases
         the previously entered fiber map!  WTF?
         """
@@ -278,10 +285,10 @@ class PlPlugMap(object):
             "cartridgeId": self.cartID,
             "instruments": "APOGEE_SOUTH"
             }
-        plPlugMap = yanny(filename=plPlugPath, np=True)
+        plPlugMap = yanny(filename=self.filePath, np=True)
         plPlugMap.append(updateDict)
-        os.remove(plPlugPath)
-        plPlugMap.write(plPlugPath)
+        os.remove(self.filePath)
+        plPlugMap.write(self.filePath)
 
     def plotMissing(self):
         tabHeight = 0.5 * MMPERINCH
