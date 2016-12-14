@@ -280,9 +280,9 @@ class PlPlugMap(object):
         the previously entered fiber map!  WTF?
         """
         updateDict = {
-            "fscanMJD": self.fscanMJD,
-            "fscanId": self.fscanID,
-            "cartridgeId": self.cartID,
+            "fscanMJD": int(self.fscanMJD),
+            "fscanId": int(self.fscanID),
+            "cartridgeId": int(self.cartID),
             "instruments": "APOGEE_SOUTH"
             }
         plPlugMap = yanny(filename=self.filePath, np=True)
