@@ -206,6 +206,8 @@ def _solvePlate(scanDir, plateID, cartID, fscanID, fscanMJD, plot=False, plugMap
     print("Loading plPlugMap in db, and making it active!!!")
     loadPlPlugMapM(fss.plPlugMap.filePath)
     print("killing all python processes")
+    #print("closing screen log")
+    #subprocess.call("exit")
     subprocess.call("killall -9 python", shell=True)
     # plt.show()
 
@@ -268,8 +270,9 @@ def runScan(args):
         if not os.path.exists(scanDir):
             break
     os.makedirs(scanDir)
-    configureLogging(scanDir, MJD, plateID, fscanID)
-
+    #configureLogging(scanDir, MJD, plateID, fscanID)
+    # begin logging screen
+    #subprocess.Popen("script %s"%(os.path.join(scanDir, "scan.log")), shell=True)
     print("scanDir: %s"%scanDir)
     print("plate ID: %i"%args.plateID)
     print("motor start pos (mm): %.2f"%args.startPos)
