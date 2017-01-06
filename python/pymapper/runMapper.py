@@ -175,7 +175,7 @@ def getExistingImgs(scanDir):
 #     root.addHandler(ch)
 #     return logfile
 
-def _solvePlate(scanDir, plateID, cartID, fscanID, fscanMJD, plot=False, plugMapPath=None):
+def _solvePlate(scanDir, plateID, cartID, fscanID, fscanMJD, plot=False, plugMapPath=None, dbLoad=True):
     # global pr
     # pr.disable()
     # s = StringIO.StringIO()
@@ -203,13 +203,14 @@ def _solvePlate(scanDir, plateID, cartID, fscanID, fscanMJD, plot=False, plugMap
     if shs.missingFibers:
         subprocess.call("gnome-open %s/unplugged.png"%(scanDir), shell = True)
     # load the plPlugMap file as an active plugging in db
-    print("Loading plPlugMap in db, and making it active!!!")
-    loadPlPlugMapM(fss.plPlugMap.filePath)
-    print("killing all python processes")
-    #print("closing screen log")
-    #subprocess.call("exit")
-    subprocess.call("killall -9 python", shell=True)
-    # plt.show()
+    if dbLoad:
+        print("Loading plPlugMap in db, and making it active!!!")
+        loadPlPlugMapM(fss.plPlugMap.filePath)
+        print("killing all python processes")
+        #print("closing screen log")
+        #subprocess.call("exit")
+        subprocess.call("killall -9 python", shell=True)
+        # plt.show()
 
 def resolvePlate(args):
     if args.scanDir is None:
@@ -305,6 +306,33 @@ def runScan(args):
     motorController.addReadyCallback(beginImgAcquisition)
     motorController.connect()
     reactor.run()
+
+def recentroid(argv=None):
+    """Rerun a map from existing image files
+    """
+    pass
+
+def redetect(argv=None):
+    """Rerun a map from existing centroidList
+    """
+    pass
+
+def resolve():
+    """Rerun a map from an existing detectionList, finds expected input files (images, centriods, detections, plPlugMapP)
+    from the working directory, writes output to the same directory (images, plPlugMapM)
+    """
+    global tstart
+    tstart = time.time()
+    scanDir = os.getcwd()
+    plPlugMapFile = glob.glob(os.path.join(scanDir, "plPlugMapP-*.par"))
+    if not plPlugMapFile:
+        raise RuntimeError("No plPlugMapP file found in present directory")
+    if not len(plPlugMapFile)==1:
+        raise RuntimeError("Found multiple plPlugMap files!")
+    plPlugMapFile = plPlugMapFile[0]
+    # get the plateID from the plPlug filename
+    plateID = int(os.path.split(plPlugMapFile)[-1].strip("plPlugMapP-").strip(".par"))
+    _solvePlate(scanDir, plateID, 23, 1, 57758, plot=False, plugMapPath=plPlugMapFile, dbLoad=False)
 
 
 def main(argv=None):

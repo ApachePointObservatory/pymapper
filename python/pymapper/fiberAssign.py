@@ -529,6 +529,7 @@ class FocalSurfaceSolver(object):
                 measPosInds.append(measInd)
 
         # did we get the expected amount of matches?
+        # note we should use len of found fibers here?
         print("got ", len(plPlugMapInds), "matches", len(multiMatchInds), "multimatches")
         if currentCall>1 and len(plPlugMapInds) == len(xArray) or currentCall == maxCalls:
             # must iterate at least once to fully solve using russells model!
@@ -568,7 +569,7 @@ class FocalSurfaceSolver(object):
         # @todo, implement later!!!!
         # if previous solution is same as new solution ==  no change, try to eliminate false positives?
         trans, rot, scale = transRotScaleSolution
-        if trans[0] == trans[1] == rot == 0 and scale == 1:
+        if trans[0] == trans[1] == rot == 0 and scale == 1 and multiMatchInds:
             # find n(multimatch) number of points furthest from any neighbor
             # and remove them
             print("no change in transrotscale, removing multimatches")
