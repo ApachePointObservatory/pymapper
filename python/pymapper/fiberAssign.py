@@ -241,14 +241,15 @@ class PlPlugMap(object):
     def enterMappedData(self, detectedFiberList):
         # for fibers not found enter fiberID = -1, spectrographID = -1, and throughput = 0
         # first set spectrograph id and fiber id to -1 for all OBJECTS
-        # self.plPlugMap["PLUGMAPOBJ"]["spectrographId"][self.objectInds] = 6
-        # self.plPlugMap["PLUGMAPOBJ"]["fiberId"][self.objectInds] = -1
+        self.plPlugMap["PLUGMAPOBJ"]["spectrographId"][self.objectInds] = -1
+        self.plPlugMap["PLUGMAPOBJ"]["fiberId"][self.objectInds] = -1
         # throughput should already be 0....do we need to check?\
         for detectedFiber in detectedFiberList:
             objInd = detectedFiber.getPlPlugObjInd()
             plInd = self.objectInds[objInd]
             self.plPlugMap["PLUGMAPOBJ"]["fiberId"][plInd] = detectedFiber.getSlitIndex()
             self.plPlugMap["PLUGMAPOBJ"]["throughput"][plInd] = detectedFiber.counts
+            self.plPlugMap["PLUGMAPOBJ"]["spectrographId"][plInd] = 2
             # paranoia!
             assert self.plPlugMap["PLUGMAPOBJ"][plInd]["holeType"].flatten()[0] == "OBJECT"
 
