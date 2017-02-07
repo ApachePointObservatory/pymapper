@@ -1,6 +1,7 @@
 """ Run mapping process
 """
 from __future__ import division, absolute_import
+import shutil
 
 from functools import partial
 import subprocess
@@ -206,6 +207,9 @@ def _solvePlate(scanDir, plateID, cartID, fscanID, fscanMJD, plot=False, plugMap
     if dbLoad:
         print("Loading plPlugMap in db, and making it active!!!")
         loadPlPlugMapM(fss.plPlugMap.filePath)
+        print("copying plPlugMap file to /data/mapper/<MJD>")
+        basePath, fileName = os.path.split(fss.plPlugMap.filePath)
+        shutil.copy(fss.plPlugMap.filePath, os.path.join("/data/mapper/%i"%MJD, fileName))
         print("killing all python processes")
         #print("closing screen log")
         #subprocess.call("exit")
@@ -271,6 +275,10 @@ def runScan(args):
         if not os.path.exists(scanDir):
             break
     os.makedirs(scanDir)
+    # if the MJD directory in /data/mapper doesn't yet exist, make it now
+    # plPlugMaps will also be copied there (for utah to grab)
+    if not os.path.exists("/data/mapper/%i"%MJD):
+        os.makedirs("/data/mapper/%i"%MJD)
     #configureLogging(scanDir, MJD, plateID, fscanID)
     # begin logging screen
     #subprocess.Popen("script %s"%(os.path.join(scanDir, "scan.log")), shell=True)
