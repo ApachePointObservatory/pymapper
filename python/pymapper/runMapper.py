@@ -216,14 +216,14 @@ def _solvePlate(scanDir, plateID, cartID, fscanID, fscanMJD, plot=False, plugMap
         subprocess.call("killall -9 python", shell=True)
         # plt.show()
 
-def resolvePlate(args):
-    if args.scanDir is None:
-        raise RuntimeError("Must specify --scanDir with --resolvePlate")
-    baseDir = os.path.abspath(args.rootDir)
-    scanDir = os.path.join(baseDir, args.scanDir)
-    if not os.path.exists(scanDir):
-        raise RuntimeError("Scan directory doesn't exist: %s"%scanDir)
-    _solvePlate(scanDir, args.plateID, plot=args.plotDetections, plugMapPath=args.plPlugMap)
+# def resolvePlate(args):
+#     if args.scanDir is None:
+#         raise RuntimeError("Must specify --scanDir with --resolvePlate")
+#     baseDir = os.path.abspath(args.rootDir)
+#     scanDir = os.path.join(baseDir, args.scanDir)
+#     if not os.path.exists(scanDir):
+#         raise RuntimeError("Scan directory doesn't exist: %s"%scanDir)
+#     _solvePlate(scanDir, args.plateID, plot=args.plotDetections, plugMapPath=args.plPlugMap)
 
 
 def reprocessImgs(args):
@@ -325,22 +325,23 @@ def redetect(argv=None):
     """
     pass
 
-def resolve():
+def resolve(scanDir=None):
     """Rerun a map from an existing detectionList, finds expected input files (images, centriods, detections, plPlugMapP)
     from the working directory, writes output to the same directory (images, plPlugMapM)
     """
     global tstart
     tstart = time.time()
-    scanDir = os.getcwd()
+    if scanDir is None:
+        scanDir = os.getcwd()
     plPlugMapFile = glob.glob(os.path.join(scanDir, "plPlugMapP-*.par"))
     if not plPlugMapFile:
-        raise RuntimeError("No plPlugMapP file found in present directory")
+        raise RuntimeError("No plPlugMapP file found")
     if not len(plPlugMapFile)==1:
         raise RuntimeError("Found multiple plPlugMap files!")
     plPlugMapFile = plPlugMapFile[0]
     # get the plateID from the plPlug filename
     plateID = int(os.path.split(plPlugMapFile)[-1].strip("plPlugMapP-").strip(".par"))
-    _solvePlate(scanDir, plateID, 23, 1, 57758, plot=False, plugMapPath=plPlugMapFile, dbLoad=False)
+    _solvePlate(scanDir, plateID, 99, 99, 9999, plot=False, plugMapPath=plPlugMapFile, dbLoad=False)
 
 
 def main(argv=None):

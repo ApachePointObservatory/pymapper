@@ -251,7 +251,7 @@ class PlPlugMap(object):
         for detectedFiber in detectedFiberList:
             objInd = detectedFiber.getPlPlugObjInd()
             plInd = self.objectInds[objInd]
-            self.plPlugMap["PLUGMAPOBJ"]["fiberId"][plInd] = detectedFiber.getSlitIndex()
+            self.plPlugMap["PLUGMAPOBJ"]["fiberId"][plInd] = detectedFiber.getSlitIndex() + 1
             self.plPlugMap["PLUGMAPOBJ"]["throughput"][plInd] = detectedFiber.counts
             self.plPlugMap["PLUGMAPOBJ"]["spectrographId"][plInd] = 2
             # paranoia!
@@ -613,6 +613,56 @@ class FocalSurfaceSolver(object):
         # plt.figure()
         # plt.hist(err, bins=100)
         # plt.show(block=True)
+
+class Fiber(object):
+    def __init__(self, fiberID, throughput, xFocal, yFocal):
+        self.fiberID = fiberID
+        self.throughput = throughput
+        self.xFocal = xFocal
+        self.yFocal = yFocal
+
+class PlPlugCompare(object):
+    """Class for comparing two plPlugMap files, for unittesting / order checking
+    """
+    def __init__(self, plPlug1, plPlug2):
+        self.fiberList1 = self.fiberListFromFile(plPlug1)
+        self.fiberList2 = self.fiberListFromFile(plPlug2)
+
+    def fiberListFromFile(self, plPlugFile):
+        fiberList = []
+        with open(plPlugFile, "r") as f:
+            lines = f.readlines()
+        for line in lines:
+            if line.startswith("PLUGMAPOBJ") and " OBJECT " in line:
+                # create a fiber from this line:
+                dataLine = line.split(" OBJECT ")[-1]
+                datums = dataLine.split()
+                fiberID = int(datums[-4])
+                throughput = int(datums[-3])
+                xFocal = float(datums[-7])
+                yFocal = float(datums[-6])
+                fiberList.append(Fiber(fiberID, throughput, xFocal, yFocal))
+        return fiberList
+
+    def checkOrder(self):
+        """Return tuple true if the fibers in plPlug1 and 2 are in the same order,
+        have the same missing fibers. Note, not sensitive to 0 or 1 indexing for
+        fiberID, and true if the same fibers are missing, and true if fibers are in same order
+        based on xy focal positions
+        """
+        fiberID1 = [fiber.fiberID for fiber in self.fiberList1]
+        fiberID2 = [fiber.fiberID for fiber in self.fiberList2]
+        # check that missing fibers match
+        sameMissing = numpy.array_equal(fiberID1<0, fiberID2<0)
+        argSort1 = numpy.argsort(fiberID1)
+        argSort2 = numpy.argsort(fiberID2)
+        sameOrder = numpy.array_equal(argSort1, argSort2)
+        # paranoia, check that the order of plugmap is same based on xy positions
+        xy1 = numpy.asarray([[fiber.xFocal, fiber.yFocal] for fiber in self.fiberList1])
+        xy2 = numpy.asarray([[fiber.xFocal, fiber.yFocal] for fiber in self.fiberList2])
+        samePosition = numpy.array_equal(xy1, xy2)
+        return sameMissing, sameOrder, samePosition
+
 
 if __name__ == "__main__":
     import pickle
