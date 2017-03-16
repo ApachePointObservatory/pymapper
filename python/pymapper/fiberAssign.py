@@ -42,6 +42,9 @@ SLIT_MATCH_THRESH = FIBERDIAMETER / 2. #mm wiggle room for slit head matching 1/
 INTER_SLIT_FIBERCENTER_DIST = 350 / MICRONSPERMM
 INTER_BLOCK_FIBERCETNER_DIST = 0.5 #mm
 
+class PlotError(Exception):
+    pass
+
 class SlitheadSolver(object):
     def __init__(self, detectedFiberList, centroidList, fiberslitposFile=None):
         """List of detections
@@ -113,6 +116,8 @@ class SlitheadSolver(object):
         # import pdb; pdb.set_trace()
         slitModel, = plt.plot(modelMotorPos, modeledFlux, '-k', alpha=0.5, linewidth=3)
         scaledRaw, = plt.plot(self.rescaledMotorPositions, rawFluxes, '.-g', alpha=0.5, linewidth=3)
+        if not len(self.rescaledMotorPositions) == len(self.normalizedFlux):
+            raise PlotError("rescaled motor pos doesn't equal normalized flux!")
         scaledDetections, = plt.plot(self.rescaledMotorPositions, self.normalizedFlux, '.-b', alpha=0.5, linewidth=3)
         for unscaled, scaled in itertools.izip(unscaledDetections, self.scaledDetections):
             # plt.plot(unscaled, 0.6, 'xr')

@@ -26,9 +26,9 @@ from .fiberAssign import SlitheadSolver, FocalSurfaceSolver
 
 from . import plt
 
-MOTOR_IP = "139.229.101.114"
+MOTOR_IP = "10.1.1.26"
 MOTOR_PORT = 15000
-MJD = floor(datetime.now().mjd)
+MJD = floor(datetime.now().mjd + 0.4) # MJD + 0.4 convention chosen by Holtz
 BASEDIR = os.path.join(os.path.expanduser("~"), "scan", "%i"%MJD)
 if not os.path.exists(BASEDIR):
     os.makedirs(BASEDIR)
