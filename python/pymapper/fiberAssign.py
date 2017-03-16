@@ -12,6 +12,7 @@ from __future__ import division, absolute_import
 import os
 import itertools
 import glob
+import subprocess
 
 import numpy
 from scipy.optimize import fmin
@@ -223,6 +224,9 @@ class PlPlugMap(object):
         self.xPos = self.plPlugMap["PLUGMAPOBJ"]["xFocal"][self.objectInds].flatten()
         self.yPos = self.plPlugMap["PLUGMAPOBJ"]["yFocal"][self.objectInds].flatten()
         self.radPos = numpy.sqrt(self.xPos**2+self.yPos**2)
+        self.meanXPos = self.xPos - numpy.mean(self.xPos)
+        self.meanYPos = self.yPos - numpy.mean(self.yPos)
+        self.meanRadPos = numpy.sqrt(self.meanXPos**2+self.meanYPos**2)
         self.plateID = int(self.plPlugMap["plateId"])
 
     @property
@@ -387,13 +391,15 @@ class FocalSurfaceSolver(object):
         measTheta = numpy.arctan2(measYPos, measXPos)
         # determine a rough scaling based on x,y value range in plPlugMap
         # file
-        maxPlRadPos = numpy.max(self.plPlugMap.radPos)
+        maxPlRadPos = numpy.max(self.plPlugMap.meanRadPos)
         maxMeasRadPos = numpy.max(measR)
         roughScale = maxPlRadPos / maxMeasRadPos
+        print("rough scale: %.4f"%roughScale)
         # apply the scale to the measured (polar) positions
         measR = measR * roughScale
-        measXPos = measR * numpy.cos(measTheta)
-        measYPos = measR * numpy.sin(measTheta)
+        measXPos = measR * numpy.cos(measTheta) + numpy.mean(self.plPlugMap.xPos)
+        measYPos = measR * numpy.sin(measTheta) + numpy.mean(self.plPlugMap.yPos)
+        # import pdb; pdb.set_trace()
         return measXPos, measYPos
 
     def nextPlotFilename(self):
@@ -505,8 +511,9 @@ class FocalSurfaceSolver(object):
         recursively!!!, this routine tweaks trans, rot, and scale each time
         """
         if currentCall == maxCalls:
-            # raise RuntimeError("Max recursion reached!!!!")
-            print("max recurion reached")
+            raise RuntimeError("Map Failed: Max recursion reached!!!!")
+            print("MAP FAILED!!!!!! max recurion reached")
+            subprocess.call("killall -9 python", shell=True)
         #     return
         # brute force, compare distance to
         # all other points, could
