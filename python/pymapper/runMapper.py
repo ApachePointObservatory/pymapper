@@ -49,7 +49,7 @@ def loadPlPlugMapM(plPlugMapPath):
     largely stolen from sdss_python_module/bin/plPlugMapM !!!
     """
 
-    from sdss.internal.database.connections import LCODatabaseAdminTunnelConnection
+    from sdss.internal.database.connections import LCODatabaseAdminLocalConnection
     from sdss.internal.database.apo.platedb.plPlugMapM import PlPlugMapMFile
 
     if not os.path.exists(plPlugMapPath):
