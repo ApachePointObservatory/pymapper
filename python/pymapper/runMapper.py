@@ -290,7 +290,7 @@ def runScan(args):
     # begin logging screen
     #subprocess.Popen("script %s"%(os.path.join(scanDir, "scan.log")), shell=True)
     print("scanDir: %s"%scanDir)
-    print("plate ID: %i"%args.plateID)
+    print("plate ID: %i"%plateID)
     print("motor start pos (mm): %.2f"%args.startPos)
     print("motor end pos (mm): %.2f"%args.endPos)
     print("motor scan speed (mm/sec): %.2f"%args.scanSpeed)
