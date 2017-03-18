@@ -1,10 +1,9 @@
 """ Run mapping process
 """
 from __future__ import division, absolute_import
-# import shutil
+import shutil
 
 from functools import partial
-import subprocess
 
 import argparse
 import time
@@ -208,13 +207,9 @@ def _solvePlate(scanDir, plateID, cartID, fscanID, fscanMJD, plot=False, plugMap
         print("Loading plPlugMap in db, and making it active!!!")
         loadPlPlugMapM(fss.plPlugMap.filePath)
 
-        #LCO HACK!!!! un-comment when write access returns
-        print("WARNING!!!! NOT COPYING TO /DATA! FIX when perms are set correctly")
-
-        #print("copying plPlugMap file to /data/mapper/<MJD>")
-        #basePath, fileName = os.path.split(fss.plPlugMap.filePath)
-        #shutil.copy(fss.plPlugMap.filePath, os.path.join("/data/mapper/%i"%MJD, fileName))
-        subprocess.call(["cp", fss.plPlugMap.filePath, os.path.join("/data/mapper/%i"%MJD, fileName)])
+        print("copying plPlugMap file to /data/mapper/<MJD>")
+        basePath, fileName = os.path.split(fss.plPlugMap.filePath)
+        shutil.copy(fss.plPlugMap.filePath, os.path.join("/data/mapper/%i"%MJD, fileName))
         print("killing all python processes")
         #print("closing screen log")
         #subprocess.call("exit")
@@ -282,9 +277,6 @@ def runScan(args):
     os.makedirs(scanDir)
     # if the MJD directory in /data/mapper doesn't yet exist, make it now
     # plPlugMaps will also be copied there (for utah to grab)
-
-    # LCOHACK!!!!
-    print("NOT CREATING /data/MJD dir, no permissions!")
     if not os.path.exists("/data/mapper/%i"%MJD):
         os.makedirs("/data/mapper/%i"%MJD)
     #configureLogging(scanDir, MJD, plateID, fscanID)
