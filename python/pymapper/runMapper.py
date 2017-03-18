@@ -1,7 +1,8 @@
 """ Run mapping process
 """
 from __future__ import division, absolute_import
-import shutil
+# import shutil
+import subprocess
 
 from functools import partial
 import subprocess
@@ -214,6 +215,7 @@ def _solvePlate(scanDir, plateID, cartID, fscanID, fscanMJD, plot=False, plugMap
         #print("copying plPlugMap file to /data/mapper/<MJD>")
         #basePath, fileName = os.path.split(fss.plPlugMap.filePath)
         #shutil.copy(fss.plPlugMap.filePath, os.path.join("/data/mapper/%i"%MJD, fileName))
+        subprocess.call(["cp", fss.plPlugMap.filePath, os.path.join("/data/mapper/%i"%MJD, fileName)])
         print("killing all python processes")
         #print("closing screen log")
         #subprocess.call("exit")
@@ -284,8 +286,8 @@ def runScan(args):
 
     # LCOHACK!!!!
     print("NOT CREATING /data/MJD dir, no permissions!")
-    # if not os.path.exists("/data/mapper/%i"%MJD):
-    #     os.makedirs("/data/mapper/%i"%MJD)
+    if not os.path.exists("/data/mapper/%i"%MJD):
+        os.makedirs("/data/mapper/%i"%MJD)
     #configureLogging(scanDir, MJD, plateID, fscanID)
     # begin logging screen
     #subprocess.Popen("script %s"%(os.path.join(scanDir, "scan.log")), shell=True)
