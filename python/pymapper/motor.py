@@ -82,7 +82,7 @@ class MotorClientFactory(ClientFactory):
 #         self.laserOn = None
 
 class MotorController(object):
-    def __init__(self,scanSpeed=SCANSPEED):
+    def __init__(self, scanSpeed=SCANSPEED, readyCallback=None):
         """readyCallback called when MotorController is ready to scan!
         """
         self.hostname = HOSTNAME
