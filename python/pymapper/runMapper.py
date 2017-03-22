@@ -19,7 +19,7 @@ from twisted.internet import reactor
 from sdss.utilities.astrodatetime import datetime
 
 from .camera import Camera, sortDetections, IMGBASENAME, IMGEXTENSION, getScanParams, \
-    pickleDetectionList, unpickleCentroids
+    pickleDetectionList, unpickleCentroids, multiprocessImage, pickleCentroids, sortDetections
 # from .imgProcess import DetectedFiberList
 
 from .motor import MotorController, SCANSPEED, STARTPOS, ENDPOS
@@ -314,9 +314,16 @@ def runScan(args):
     reactor.run()
 
 def recentroid(argv=None):
-    """Rerun a map from existing image files
+    """Create centroid and detection lists from images in current
+    directory
     """
-    pass
+    scanDir = os.getcwd()
+    imageFileList = sorted(glob.glob(os.path.join(scanDir, "*.fits")))
+    centroidList = multiprocessImage(imageFileList, callFunc=None, block=True)
+    pickleCentroids(centroidList, scanDir)
+    detectionList = sortDetections(centroidList)
+    pickleDetectionList(detectionList, scanDir)
+
 
 def redetect(argv=None):
     """Rerun a map from existing centroidList
