@@ -313,17 +313,6 @@ def runScan(args):
     motorController.connect()
     reactor.run()
 
-def recentroid(argv=None):
-    """Create centroid and detection lists from images in current
-    directory
-    """
-    scanDir = os.getcwd()
-    imageFileList = sorted(glob.glob(os.path.join(scanDir, "*.fits")))
-    centroidList = multiprocessImage(imageFileList, callFunc=None, block=True)
-    pickleCentroids(centroidList, scanDir)
-    detectionList = sortDetections(centroidList)
-    pickleDetectionList(detectionList, scanDir)
-
 
 def redetect(argv=None):
     """Rerun a map from existing centroidList
