@@ -91,9 +91,13 @@ for x in range(960):
 # accepting a single argument (processImage)
 # TZERO = None # time stamp of first image
 
-MOTORSPEED = SCANSPEED #* 1.001199121060579
-MOTORSTART = STARTPOS
-MOTOREND = ENDPOS
+# MOTORSPEED = SCANSPEED #* 1.001199121060579
+# MOTORSTART = STARTPOS
+# MOTOREND = ENDPOS
+
+MOTORSPEED = 1.2
+MOTORSTART = 134
+MOTOREND = 24
 
 
 def getScanParams(paramfile):
@@ -186,9 +190,11 @@ class Camera(object):
         global MOTORSTART
         global MOTOREND
         global MOTORSPEED
-        MOTORSTART = motorStart
-        MOTOREND = motorEnd
-        MOTORSPEED = motorSpeed
+
+        # MOTORSTART = motorStart
+        # MOTOREND = motorEnd
+        # MOTORSPEED = motorSpeed
+
         self.acquiring = False
         self.process = None
         self.imageDir = imageDir
