@@ -21,12 +21,11 @@ from sdss.utilities.astrodatetime import datetime
 from .camera import Camera, sortDetections, IMGBASENAME, IMGEXTENSION, getScanParams, \
     pickleDetectionList, unpickleCentroids
 # from .imgProcess import DetectedFiberList
-from .motor import MotorController
+
+from .motor import MotorController, SCANSPEED, STARTPOS, ENDPOS
 from .fiberAssign import SlitheadSolver, FocalSurfaceSolver
 
 from . import plt
-
-import motor
 
 MJD = floor(datetime.now().mjd + 0.4) # MJD + 0.4 convention chosen by Holtz
 BASEDIR = os.path.join(os.path.expanduser("~"), "scan", "%i"%MJD)
@@ -268,7 +267,7 @@ def runScan(args):
     else:
         cartID = int(args.cartID)
     if not args.scanSpeed:
-        scanSpeed = motor.SCANSPEED
+        scanSpeed = SCANSPEED
     else:
         scanSpeed = float(args.scanSpeed)
     plateDir = os.path.join(BASEDIR, "plate%i"%plateID)
@@ -289,14 +288,14 @@ def runScan(args):
     #subprocess.Popen("script %s"%(os.path.join(scanDir, "scan.log")), shell=True)
     print("scanDir: %s"%scanDir)
     print("plate ID: %i"%plateID)
-    print("motor start pos (mm): %.2f"%args.startPos)
-    print("motor end pos (mm): %.2f"%args.endPos)
-    print("motor scan speed (mm/sec): %.2f"%args.scanSpeed)
+    print("motor start pos (mm): %.2f"%STARTPOS)
+    print("motor end pos (mm): %.2f"%ENDPOS)
+    print("motor scan speed (mm/sec): %.2f"%SCANSPEED)
 
 
     # create directory to hold camera images
     # note all previous images will be removed if image dir is not empty
-    camera = Camera(scanDir, args.startPos, args.endPos, args.scanSpeed)
+    camera = Camera(scanDir, STARTPOS, ENDPOS, scanSpeed)
 
     # setup object that finds and holds detections
     # detectedFiberList = DetectedFiberList()
