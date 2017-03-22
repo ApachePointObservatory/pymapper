@@ -11,8 +11,8 @@ from twisted.internet import reactor
 
 HOSTNAME = "10.1.1.26"
 PORT = 15000
-STARTPOS = 50.9
-ENDPOS = 7.2
+STARTPOS = 53
+ENDPOS = 5
 SCANSPEED = 1
 QUICKSPEED = 1
 
