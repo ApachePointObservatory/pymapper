@@ -11,7 +11,6 @@ import time
 import traceback
 from multiprocessing import Pool
 import multiprocessing as mp
-import traceback
 
 import shutil
 
@@ -25,6 +24,7 @@ import PyGuide
 from twisted.internet import reactor
 
 from . import plt
+from .motor import STARTPOS, ENDPOS, SCANSPEED
 
 import cProfile, pstats, StringIO
 
@@ -67,11 +67,6 @@ from IDL:
 # from pymapper.imgProcess import multiprocessImage
 # how to ensure that the image program is killed?
 
-# EXE = "testFakeWrite.py"
-# BASENAME = "pyTestFile"
-# IMGEXTENSION = "foo"
-
-EXE = "AsynchronousGrabWrite"
 IMGBASENAME = "img"
 IMGEXTENSION = "fits"
 MINCOUNTS = 0
@@ -95,35 +90,39 @@ for x in range(960):
 # when calling class methods rather than functions
 # accepting a single argument (processImage)
 # TZERO = None # time stamp of first image
-MOTORSPEED = None
-MOTORSTART = None
-MOTOREND = None
+TOTAL_TIME = 1490145491.983072 - 0.04668402671813965
 
-def getScanParams(paramfile):
-    """Parse the paramfile to determine the scan params
-    """
-    outDict = {
-        "speed": None,
-        "start": None,
-        "end": None,
-        "plateID": None,
-    }
-    with open(paramfile, "r") as f:
-        paramLine = f.readlines()
 
-    for line in paramLine:
-        param, val = line.split()
-        if param == "plateID":
-            outDict["plateID"] = int(val)
-        elif param == "startPos":
-            outDict["start"] = float(val)
-        elif param == "endPos":
-            outDict["end"] = float(val)
-        elif param == "speed":
-            outDict["speed"] = float(val)
-    if None in outDict.values():
-        raise RuntimeError("Could not extract plateID, start, end, and/or speed from paramfile")
-    return outDict
+MOTORSPEED = SCANSPEED * 1.001199121060579
+MOTORSTART = STARTPOS
+MOTOREND = ENDPOS
+
+
+# def getScanParams(paramfile):
+#     """Parse the paramfile to determine the scan params
+#     """
+#     outDict = {
+#         "speed": None,
+#         "start": None,
+#         "end": None,
+#         "plateID": None,
+#     }
+#     with open(paramfile, "r") as f:
+#         paramLine = f.readlines()
+
+#     for line in paramLine:
+#         param, val = line.split()
+#         if param == "plateID":
+#             outDict["plateID"] = int(val)
+#         elif param == "startPos":
+#             outDict["start"] = float(val)
+#         elif param == "endPos":
+#             outDict["end"] = float(val)
+#         elif param == "speed":
+#             outDict["speed"] = float(val)
+#     if None in outDict.values():
+#         raise RuntimeError("Could not extract plateID, start, end, and/or speed from paramfile")
+#     return outDict
 
 def _basePickle(basename, pyobj, scanDir):
     # save detections to picked file

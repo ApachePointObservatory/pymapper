@@ -1,5 +1,18 @@
 #!/usr/bin/env python
-from pymapper import runMapper
+import glob
+import os
+from pymapper.camera import multiprocessImage, pickleCentroids, pickleDetectionList, sortDetections
+
+def recentroid(argv=None):
+    """Create centroid and detection lists from images in current
+    directory
+    """
+    scanDir = os.getcwd()
+    imageFileList = sorted(glob.glob(os.path.join(scanDir, "*.fits")))
+    centroidList = multiprocessImage(imageFileList, callFunc=None, block=True)
+    pickleCentroids(centroidList, scanDir)
+    detectionList = sortDetections(centroidList)
+    pickleDetectionList(detectionList, scanDir)
 
 if __name__ == "__main__":
-    runMapper.recentroid()
+    recentroid()
