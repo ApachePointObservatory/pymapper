@@ -9,14 +9,12 @@ from twisted.internet import reactor
 
 #@todo, implement timeouts
 
-HOSTNAME = "map-laser.astro.washington.edu"
-# HOSTNAME = "localhost"
+HOSTNAME = "10.1.1.26"
 PORT = 15000
-STARTPOS = 27 #mm 124 beg last block
-#ENDPOS = 100 #mm
-ENDPOS = 137 #mm
-SCANSPEED = 0.5 ## mm/sec
-QUICKSPEED = 1.2 ## mm/sec
+STARTPOS = 50.9
+ENDPOS = 7.2
+SCANSPEED = 1
+QUICKSPEED = 1
 
 class Command(object):
     def __init__(self, cmdStr, callFunc=None, timeout=0):
@@ -84,23 +82,15 @@ class MotorClientFactory(ClientFactory):
 #         self.laserOn = None
 
 class MotorController(object):
-    def __init__(self,
-        readyCallback=None,
-        startPos=STARTPOS,
-        endPos=ENDPOS,
-        scanSpeed=SCANSPEED,
-        quickSpeed = QUICKSPEED,
-        hostname=HOSTNAME,
-        port=PORT
-        ):
+    def __init__(self,scanSpeed=SCANSPEED):
         """readyCallback called when MotorController is ready to scan!
         """
-        self.hostname = hostname
-        self.port = port
-        self.startPos = startPos
-        self.endPos = endPos
+        self.hostname = HOSTNAME
+        self.port = PORT
+        self.startPos = STARTPOS
+        self.endPos = ENDPOS
         self.scanSpeed = scanSpeed
-        self.quickSpeed = quickSpeed
+        self.quickSpeed = QUICKSPEED
         self.readyCallback = readyCallback
         # self.status = MotorStatus()
         self.mcf = MotorClientFactory(self)

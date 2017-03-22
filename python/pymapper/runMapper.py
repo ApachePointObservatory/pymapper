@@ -26,8 +26,8 @@ from .fiberAssign import SlitheadSolver, FocalSurfaceSolver
 
 from . import plt
 
-MOTOR_IP = "10.1.1.26"
-MOTOR_PORT = 15000
+import motor
+
 MJD = floor(datetime.now().mjd + 0.4) # MJD + 0.4 convention chosen by Holtz
 BASEDIR = os.path.join(os.path.expanduser("~"), "scan", "%i"%MJD)
 if not os.path.exists(BASEDIR):
@@ -267,6 +267,10 @@ def runScan(args):
         cartID = int(raw_input("cartID: "))
     else:
         cartID = int(args.cartID)
+    if not args.scanSpeed:
+        scanSpeed = motor.SCANSPEED
+    else:
+        scanSpeed = float(args.scanSpeed)
     plateDir = os.path.join(BASEDIR, "plate%i"%plateID)
     if not os.path.exists(plateDir):
         os.makedirs(plateDir)
@@ -298,13 +302,7 @@ def runScan(args):
     # detectedFiberList = DetectedFiberList()
 
     # construct motor, nothing happens until connect is called
-    motorController = MotorController(
-        startPos = args.startPos,
-        endPos = args.endPos,
-        scanSpeed = args.scanSpeed,
-        hostname = MOTOR_IP,
-        port = MOTOR_PORT,
-        )
+    motorController = MotorController(scanSpeed = scanSpeed)
 
     # set up callback chains for mapping process
 
@@ -354,12 +352,7 @@ def main(argv=None):
         )
     parser.add_argument("--plateID", type=int, required=False, help="Plate ID")
     parser.add_argument("--cartID", type=int, required=False, help="Cart ID")
-    parser.add_argument("--startPos", required=False, type=float, default=134,
-        help="begin of scan motor position (mm).")
-    parser.add_argument("--endPos", required=False, type=float, default=24,
-        help="end of scan motor position (mm).")
-    parser.add_argument("--scanSpeed", required=False, type=float, default=1.2,
-        help="speed at which motor scans (mm/sec).")
+    parser.add_argument("--scanSpeed", required=False, type=float, help="speed at which motor scans (mm/sec).")
     parser.add_argument("--plotDetections", action="store_true", default=False, help="if present create png plots with circled dectections, takes much longer." )
     # parser.add_argument("--resolvePlate", action="store_true", default=False, help="if present, solve plate matching fibers to holes, from pickled img process output.")
     # parser.add_argument("--reprocessImgs", action="store_true", default=False, help="if present, reprocess the raw images.")
