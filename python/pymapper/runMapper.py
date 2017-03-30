@@ -188,6 +188,7 @@ def _solvePlate(scanDir, plateID, cartID, fscanID, fscanMJD, plot=False, plugMap
     detectedFiberList = sortDetections(centroidList, plot=plot)
     pickleDetectionList(detectedFiberList, scanDir)
     shs = SlitheadSolver(detectedFiberList, centroidList)
+    shs.plotSolutionNoSolve(scanDir)
     shs.matchDetections()
     print("missing fibers: ")
     for fiber in shs.missingFibers:
@@ -295,7 +296,7 @@ def runScan(args):
 
     # create directory to hold camera images
     # note all previous images will be removed if image dir is not empty
-    camera = Camera(scanDir, STARTPOS, ENDPOS, scanSpeed)
+    camera = Camera(scanDir) #, STARTPOS, ENDPOS, scanSpeed)
 
     # setup object that finds and holds detections
     # detectedFiberList = DetectedFiberList()

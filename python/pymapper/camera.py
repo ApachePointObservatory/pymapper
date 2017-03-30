@@ -95,9 +95,9 @@ for x in range(960):
 # MOTORSTART = STARTPOS
 # MOTOREND = ENDPOS
 
-MOTORSPEED = 1.2
-MOTORSTART = 134
-MOTOREND = 24
+MOTORSPEED = SCANSPEED
+MOTORSTART = STARTPOS
+MOTOREND = ENDPOS
 
 
 def getScanParams(paramfile):
@@ -186,14 +186,17 @@ def unpickleDetectionList(scanDir):
 #     scipy.misc.imsave(filename, array2d)
 
 class Camera(object):
-    def __init__(self, imageDir, motorStart, motorEnd, motorSpeed):
+    def __init__(self, imageDir, motorStart=None, motorEnd=None, motorSpeed=None):
         global MOTORSTART
         global MOTOREND
         global MOTORSPEED
 
-        # MOTORSTART = motorStart
-        # MOTOREND = motorEnd
-        # MOTORSPEED = motorSpeed
+        if motorStart is not None:
+            MOTORSTART = motorStart
+        if motorEnd is not None:
+            MOTOREND = motorEnd
+        if motorSpeed is not None:
+            MOTORSPEED = motorSpeed
 
         self.acquiring = False
         self.process = None

@@ -11,10 +11,10 @@ from twisted.internet import reactor
 
 HOSTNAME = "10.1.1.26"
 PORT = 15000
-STARTPOS = 62.5
-ENDPOS = 10.5
-SCANSPEED = 0.4
-QUICKSPEED = 0.4
+STARTPOS = 135
+ENDPOS = 20
+SCANSPEED = 3.2
+QUICKSPEED = 3.2
 
 class Command(object):
     def __init__(self, cmdStr, callFunc=None, timeout=0):
