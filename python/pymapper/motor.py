@@ -13,8 +13,8 @@ HOSTNAME = "10.1.1.26"
 PORT = 15000
 STARTPOS = 135
 ENDPOS = 20
-SCANSPEED = 3.2
-QUICKSPEED = 3.2
+SCANSPEED = 2.6
+QUICKSPEED = 2.6
 
 class Command(object):
     def __init__(self, cmdStr, callFunc=None, timeout=0):
