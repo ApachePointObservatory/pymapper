@@ -188,7 +188,6 @@ def _solvePlate(scanDir, plateID, cartID, fscanID, fscanMJD, plot=False, plugMap
     detectedFiberList = sortDetections(centroidList, plot=plot)
     pickleDetectionList(detectedFiberList, scanDir)
     shs = SlitheadSolver(detectedFiberList, centroidList)
-    shs.plotSolutionNoSolve(scanDir)
     shs.matchDetections()
     print("missing fibers: ")
     for fiber in shs.missingFibers:
@@ -211,11 +210,23 @@ def _solvePlate(scanDir, plateID, cartID, fscanID, fscanMJD, plot=False, plugMap
         print("copying plPlugMap file to /data/mapper/<MJD>")
         basePath, fileName = os.path.split(fss.plPlugMap.filePath)
         shutil.copy(fss.plPlugMap.filePath, os.path.join("/data/mapper/%i"%MJD, fileName))
-        print("killing all python processes")
+
         #print("closing screen log")
         #subprocess.call("exit")
-        subprocess.call("killall -9 python", shell=True)
-        # plt.show()
+
+    # compress all images in the scan directory
+    print("compressing fits files")
+    subprocess.call("fpack -D *.fits", cwd=scanDir, shell=True)
+    print("copying all map data to /data/rawmapper")
+    rawmapperDir = "/data/rawmapper/%i/plate%i/fscan%i"%(fscanMJD, plateID, fscanID)
+    print("creating %s"%rawmapperDir)
+    os.makedirs(rawmapperDir)
+    print("cp %s/* %s"%(scanDir, rawmapperDir))
+    print("copying all files to /data/rawmapper in background")
+    subprocess.Popen("cp %s/* %s"%(scanDir, rawmapperDir), shell=True)
+    print("killing all python processes")
+    subprocess.call("killall -9 python", shell=True)
+    # plt.show()
 
 # def resolvePlate(args):
 #     if args.scanDir is None:

@@ -102,51 +102,6 @@ class SlitheadSolver(object):
     def hack(self):
         self.nomMotorPos = numpy.asarray(self.nomMotorPos) * 1.05 #- 4
 
-    def plotSolutionNoSolve(self, scanDir=None):
-        # scale rawFluxes
-        # rawFluxes = (self.rawFluxes - numpy.median(self.rawFluxes))
-        # scale by 3/4 the max value
-        scaleValue = sorted(self.rawFluxes)[int(len(self.rawFluxes)*3/4)]
-        rawFluxes = 0.5*self.rawFluxes / scaleValue
-        modelMotorPos = numpy.arange(self.rescaledMotorPositions[0], self.rescaledMotorPositions[-1], -1*FIBERDIAMETER/30)
-        unscaledDetections = numpy.asarray([det.motorPos for det in self.detectedFiberList])
-        fiberNums = [det.getSlitIndex() for det in self.detectedFiberList]
-        modeledFlux = [self.fluxFromMotorPos(motorPos) for motorPos in modelMotorPos]
-        fig = plt.figure(figsize=(200,30))
-        # import pdb; pdb.set_trace()
-        slitModel, = plt.plot(modelMotorPos, modeledFlux, '-k', alpha=0.5, linewidth=3)
-        scaledRaw, = plt.plot(self.rescaledMotorPositions, rawFluxes, '.-g', alpha=0.5, linewidth=3)
-        if not len(self.rescaledMotorPositions) == len(self.normalizedFlux):
-            raise PlotError("rescaled motor pos doesn't equal normalized flux!")
-        scaledDetections, = plt.plot(self.rescaledMotorPositions, self.normalizedFlux, '.-b', alpha=0.5, linewidth=3)
-        for unscaled, scaled in itertools.izip(unscaledDetections, self.scaledDetections):
-            # plt.plot(unscaled, 0.6, 'xr')
-            # plt.plot(scaled, 0.51, 'or')
-            plt.plot([unscaled, scaled], [.6, .51], 'r-', alpha=0.5, linewidth=2)
-        unscaledCenters, = plt.plot(unscaledDetections, 0.6*numpy.ones(len(unscaledDetections)), 'xr')
-        scaledCenters, = plt.plot(self.scaledDetections, 0.51*numpy.ones(len(self.scaledDetections)), 'or')
-        # for x, fiberNum in itertools.izip(self.scaledDetections, fiberNums):
-        #     plt.text(x, 0.52, str(fiberNum+1), horizontalalignment='center', fontsize=8)
-        if scanDir:
-            nfn = os.path.join(scanDir, "PREslitheadSolution.png")
-        else:
-            nfn = "PREslitheadSolution.png"
-        plt.legend(
-            [slitModel, scaledRaw, scaledDetections, unscaledCenters, scaledCenters],
-            ["Gaussian Slit Model", "Fit, Thresholded, Normed Total Counts In Frame", "Fit, Normed Detection Counts", "Unfit Detection Centers", "Fit Detection Centers"],
-            fontsize=30,
-            # loc = "upper center",
-            )
-        plt.xlabel("Motor Position (mm)")
-        plt.ylabel("Normalized Counts")
-        meanX = numpy.mean(self.rescaledMotorPositions)
-        maxY = numpy.max(rawFluxes)
-        # plt.text(meanX, maxY - 0.1, "RMS after scale/offeset fitting: %.6f"%self.rms, horizontalalignment="center", fontsize=30)
-        # missingFiberStr = ",".join([str(fiber) for fiber in self.missingFibers])
-        # plt.text(meanX, maxY - 0.15, "Missing Fiber Numbers: %s"%missingFiberStr, horizontalalignment="center", fontsize=30)
-        # plt.text(meanX, maxY - 0.05, "Fit -- Scale: %.4f Offset: %.4f (mm)"%(self.scale, self.offset), horizontalalignment="center", fontsize=30)
-        fig.savefig(nfn); plt.close(fig)
-
 
     def plotSolution(self, scanDir=None):
         # scale rawFluxes

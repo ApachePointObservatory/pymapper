@@ -5,10 +5,11 @@ import numpy
 import matplotlib.pyplot as plt
 
 from sdss.utilities.yanny import yanny
+import sys
 
 
 unmapped = "plPlugMapP-8785.par"
-mapped = "test170plug.par" # output from mapping 8785 determinstically
+# mapped = "test170plug.par" # output from mapping 8785 determinstically
 
 
 def getMapFromOverlay():
@@ -62,8 +63,8 @@ def getOrder(plPlugMapFile, invertInts=False):
 
 
 
-
-
-eo, mo = getOrder(mapped)
-plt.plot(eo, mo, 'ob', alpha=0.5)
-plt.show()
+if __name__ == "__main__":
+    mappedFile = sys.argv[1]
+    eo, mo = getOrder(mappedFile)
+    plt.plot(eo, mo, 'ob', alpha=0.5)
+    plt.show()
