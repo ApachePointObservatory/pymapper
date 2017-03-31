@@ -5,16 +5,84 @@ from __future__ import division, absolute_import
 from twisted.internet.protocol import Protocol, ClientFactory
 from twisted.internet.endpoints import TCP4ClientEndpoint
 from twisted.internet import reactor
+import numpy
 # from twisted.internet.defer import Deferred
 
 #@todo, implement timeouts
+class MotorConfig(object):
+    def __init__(self):
+        self.configFile = os.path.join(os.getenv("PYMAPPER_DIR"), "etc", "motorConfig.dat")
+        self.hostname = None
+        self.port = None
+        self.startPos = None
+        self.endPos = None
+        self.speed = None
+        self.slitPos = None
+        self.direction = None
+        self.loadMe(configFile) # load from file and set attrs
+        self.checkMe()
 
-HOSTNAME = "10.1.1.26"
-PORT = 15000
-STARTPOS = 135
-ENDPOS = 20
-SCANSPEED = 2.6
-QUICKSPEED = 2.6
+
+    def loadMe(self, configFile):
+        slitPos = {}
+        slitPopulate = False
+        with open(configFile, "r") as f:
+            lines = f.readlines()
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith("#"):
+                continue
+            line = line.lower()
+            if line.startswith("hostname"):
+                self.hostname = str(self.getlineValue(line))
+            elif line.startswith("port"):
+                self.port = int(self.getlineValue(line))
+            elif line.startswith("startpos"):
+                self.startPos = float(self.getlineValue(line))
+            elif line.startswith("endpos"):
+                self.endPos = float(self.getlineValue(line))
+            elif line.startswith("speed"):
+                self.speed = float(self.getlineValue(line))
+            elif line.startswith("slitPos"):
+                # begin populating dict
+                slitPopulate = True
+            elif line.startswith("}"):
+                # done populating dict
+                slitPopulate = False
+                self.slitPos = slitPos
+            elif slitPopulate:
+                line = line.strip(",")
+                fiber, motorPos = line.split(":")
+                fiber = int(fiber)
+                motorPos = float(motorPos)
+                slitPos[fiber] = motorPos
+        self.direction = numpy.sign(self.endPos-self.startPos)
+
+    def getlineValue(self, line):
+        return line.split("=")[-1].strip()
+
+    def checkMe(self):
+        if None in [
+            self.hostname,
+            self.port,
+            self.startPos,
+            self.endPos,
+            self.speed,
+            self.direction
+            ]:
+            raise RuntimeError("Some Missing Motor configuration")
+        # check that all 300 fibers are in slit pos
+        if numpy.array_equal(self.slitPos.keys(), range(1,301)) == 300:
+            raise RuntimeError("Missing motor positions in slit pos config")
+
+    def posFromTime(self, timestamp):
+        """Return motor position for a given time
+        """
+        return self.startPos + self.direction*self.speed*timestamp
+
+MOTOR_CONFIG = MotorConfig()
 
 class Command(object):
     def __init__(self, cmdStr, callFunc=None, timeout=0):
@@ -82,15 +150,9 @@ class MotorClientFactory(ClientFactory):
 #         self.laserOn = None
 
 class MotorController(object):
-    def __init__(self, scanSpeed=SCANSPEED, readyCallback=None):
+    def __init__(self, readyCallback=None):
         """readyCallback called when MotorController is ready to scan!
         """
-        self.hostname = HOSTNAME
-        self.port = PORT
-        self.startPos = STARTPOS
-        self.endPos = ENDPOS
-        self.scanSpeed = scanSpeed
-        self.quickSpeed = QUICKSPEED
         self.readyCallback = readyCallback
         # self.status = MotorStatus()
         self.mcf = MotorClientFactory(self)
@@ -106,7 +168,7 @@ class MotorController(object):
     def connect(self):
         """Returns a deferred
         """
-        point = TCP4ClientEndpoint(reactor, self.hostname, self.port)
+        point = TCP4ClientEndpoint(reactor, MOTOR_CONFIG.hostname, MOTOR_CONFIG.port)
         connDeferred = point.connect(self.mcf)
         connDeferred.addCallback(self.gotProtocol)
         # and then prepare the controller to scan!
@@ -147,8 +209,7 @@ class MotorController(object):
         # foo is ignored arg passed via callback framework
         # could send a stop first...
         # self.getStatus(callFunc=self.checkHomeThenMove)
-        self.setSpeed(QUICKSPEED)
-        self.move(self.startPos, callFunc=self.disconnect)
+        self.move(MOTOR_CONFIG.startPos, callFunc=self.disconnect)
         # try killin twisted event loop now?
         # self.protocol.transport.loseConnection()
         # reactor.stop()
@@ -157,14 +218,14 @@ class MotorController(object):
     def checkHomeThenMove(self):
         if not self.isHomed:
             print("Slit Head Axis is not homed.  Home it before proceeding!")
+            raise RuntimeError("Slit Head Axis is not homed.  Home it before proceeding!")
             reactor.stop()
             # raise RuntimeError("Slit Head Axis is not homed.  Home it before proceeding!")
         else:
             print("Axis is Homed!!")
             # move motor in position for scan.
-            self.setSpeed(self.quickSpeed)
-            self.move(self.startPos)
-            self.setSpeed(self.scanSpeed)
+            self.setSpeed(MOTOR_CONFIG.speed)
+            self.move(MOTOR_CONFIG.startPos)
             self.laserOn(callFunc=self.readyCallback)
 
     def getStatus(self, callFunc=None):

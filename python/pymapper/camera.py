@@ -24,7 +24,7 @@ import PyGuide
 from twisted.internet import reactor
 
 from . import plt
-from .motor import STARTPOS, ENDPOS, SCANSPEED
+from .motor import MOTOR_CONFIG
 
 import cProfile, pstats, StringIO
 
@@ -34,35 +34,6 @@ except:
     print("Warning, failed to find pymba!")
     startCapture, stopCapture, GLOBALS, camera = None, None, None, None
 
-# how to deal with hot pixels?
-"""
-from IDL:
-   ; Search for hot pixels, and subtract the median value (plus some
-   ; multiple of the dispersion of that value) from those pixels
-   ; A pixel is hot if it's detected in >5% of the timesteps
-   nframetot = n_elements(uniq(sdat.frame))
-   xypix = sdat.col * fscanRows + sdat.row
-   isort = sort(xypix)
-   iuniq = uniq(xypix[isort])
-   nuniq = n_elements(iuniq)
-   i0 = [0,iuniq[0:nuniq-1]+1]
-   num = iuniq - i0 + 1
-   ihot = where(num GT 0.05*nframetot, nhot)
-   for i=0L, nhot-1L do begin
-      thisxy = xypix[isort[i0[ihot[i]]]]
-      thisindx = isort[i0[ihot[i]]:iuniq[ihot[i]]]
-      djs_iterstat, sdat[thisindx].flux, sigrej=3, $
-       median=thismed, sigma=thissig
-      hotval = thismed + 3*thissig + 5
-      sdat[thisindx].flux = (sdat[thisindx].flux - hotval) > 0
-      splog, 'Hot pixel at X,Y=', thisxy/fscanRows, thisxy MOD fscanRows, $
-       ' val=', hotval
-   endfor
-
-   ; Invert camera image if need be
-   sdat.col *= camparam.xpixfac
-
-"""
 
 # from pymapper.imgProcess import multiprocessImage
 # how to ensure that the image program is killed?
@@ -95,9 +66,9 @@ for x in range(960):
 # MOTORSTART = STARTPOS
 # MOTOREND = ENDPOS
 
-MOTORSPEED = SCANSPEED
-MOTORSTART = STARTPOS
-MOTOREND = ENDPOS
+# MOTORSPEED = SCANSPEED
+# MOTORSTART = STARTPOS
+# MOTOREND = ENDPOS
 
 
 def getScanParams(paramfile):
@@ -160,44 +131,9 @@ def pickleDetectionList(detectionList, scanDir):
 def unpickleDetectionList(scanDir):
     return _baseUnpickle("detectionList", scanDir)
 
-# def frameNumFromName(imgName, imgBase=IMGBASENAME, imgExt=IMGEXTENSION):
-#     imgName = os.path.split(imgName)[-1]
-#     return int(imgName.split(imgBase)[-1].split(".%s"%imgExt)[0])
-
-# def convToFits(imageFileDirectory, flatImg, frameStartNum, frameEndNum=None, imgBaseName=IMGBASENAME, imgExtension=IMGEXTENSION):
-#     saveImage()
-
-# def saveImage(filename, array2d):
-#     if os.path.exists(filename):
-#         print("removing previous", filename)
-#         os.remove(filename)
-#     # median filter the image
-#     # array2d = scipy.ndimage.median_filter(array2d, size=1)
-#     if filename.endswith(".fits"):
-#         _saveFits(filename, array2d)
-#     else:
-#         _saveJpeg(filename, array2d)
-
-# def _saveFits(filename, array2d):
-#     hdu = fits.PrimaryHDU(array2d)
-#     hdu.writeto(filename)
-
-# def _saveJpeg(filename, array2d):
-#     scipy.misc.imsave(filename, array2d)
 
 class Camera(object):
-    def __init__(self, imageDir, motorStart=None, motorEnd=None, motorSpeed=None):
-        global MOTORSTART
-        global MOTOREND
-        global MOTORSPEED
-
-        if motorStart is not None:
-            MOTORSTART = motorStart
-        if motorEnd is not None:
-            MOTOREND = motorEnd
-        if motorSpeed is not None:
-            MOTORSPEED = motorSpeed
-
+    def __init__(self, imageDir):
         self.acquiring = False
         self.process = None
         self.imageDir = imageDir
@@ -344,11 +280,7 @@ def processImage(imageFile):
 
     """
     try:
-        # global TZERO
-        global MOTORSPEED
-        global MOTORSTART
-        global MOTOREND
-        motorDirection = numpy.sign(MOTOREND-MOTORSTART)
+        # motorDirection = numpy.sign(MOTOREND-MOTORSTART)
         # frame = int(imageFile.split(IMGBASENAME)[-1].split(".")[0])
         # timestamp = os.path.getmtime(imageFile) - TZERO
         frame = None
@@ -391,7 +323,7 @@ def processImage(imageFile):
                         ("counts", counts),
                         ("xyCtr", xyCtr),
                         ("rad", rad),
-                        ("motorPos", MOTORSTART + motorDirection*MOTORSPEED*timestamp),
+                        ("motorPos", MOTOR_CONFIG.posFromTime(timestamp)),
                         ("frame", frame),
                         ("totalCounts", totalCounts),
                     ))

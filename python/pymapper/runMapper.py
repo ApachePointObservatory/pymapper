@@ -22,10 +22,10 @@ from .camera import Camera, sortDetections, IMGBASENAME, IMGEXTENSION, getScanPa
     pickleDetectionList, unpickleCentroids, multiprocessImage, pickleCentroids, sortDetections
 # from .imgProcess import DetectedFiberList
 
-from .motor import MotorController, SCANSPEED, STARTPOS, ENDPOS
-from .fiberAssign import SlitheadSolver, FocalSurfaceSolver
+from .motor import MotorController, MOTOR_CONFIG
+from .pyCamera import GLOBALS
 
-from . import plt
+from .fiberAssign import SlitheadSolver, FocalSurfaceSolver
 
 MJD = floor(datetime.now().mjd + 0.4) # MJD + 0.4 convention chosen by Holtz
 BASEDIR = os.path.join(os.path.expanduser("~"), "scan", "%i"%MJD)
@@ -33,7 +33,6 @@ if not os.path.exists(BASEDIR):
     os.makedirs(BASEDIR)
 # check for existing scan directories
 
-fiberslitposfile = os.path.join(os.getenv("PYMAPPER_DIR"), "etc", "fiberpos.dat")
 tstart = None
 
 # import cProfile, pstats, StringIO
@@ -43,10 +42,23 @@ tstart = None
 todo: add re-detect/re-solve options
 """
 
+def copyConfig(scanDir):
+    # copy the configuration files used in this scan
+    # to the scan directory
+    motorConfig = MOTOR_CONFIG.configFile
+    cameraConfig = GLOBALS.configFile
+    for configFile in [motorConfig, cameraConfig]:
+        fileName = os.path.split(configFile)[-1]
+        toFile = os.path.join(scanDir, fileName)
+        copying("%s to %s"%(configFile, toFile))
+        shutil.copy(configFile, toFile)
+
+
 def loadPlPlugMapM(plPlugMapPath):
     """Loads a plPlugMapM file to the DB.
     largely stolen from sdss_python_module/bin/plPlugMapM !!!
     """
+
 
     from sdss.internal.database.connections import LCODatabaseAdminLocalConnection
     from sdss.internal.database.apo.platedb.plPlugMapM import PlPlugMapMFile
@@ -58,46 +70,6 @@ def loadPlPlugMapM(plPlugMapPath):
     plFile.load(replace=True, active=True)
 
     return
-
-class LogStdOut(object):
-    def __init__(self, filename):
-        """Simply logs all standard out to a log
-        """
-        self.terminal = sys.stdout
-        self.log = open(filename, "w")
-
-    def write(self, message):
-        self.terminal.write(message)
-        self.log.write(message)
-
-    def flush(self):
-        #this flush method is needed for python 3 compatibility.
-        #this handles the flush command by doing nothing.
-        #you might want to specify some extra behavior here.
-        pass
-
-class LogStdErr(object):
-    def __init__(self, filename):
-        """Simply logs all standard out to a log
-        """
-        self.terminal = sys.stderr
-        self.log = open(filename, "w")
-
-    def write(self, message):
-        self.terminal.write(message)
-        self.log.write(message)
-
-    def flush(self):
-        #this flush method is needed for python 3 compatibility.
-        #this handles the flush command by doing nothing.
-        #you might want to specify some extra behavior here.
-        pass
-
-def configureLogging(scanDir, MJD, plateID, fscanID):
-    logfile = os.path.join(scanDir, "scan-%i-%i-fscan%i.log"%(MJD, plateID, fscanID))
-    errfile = os.path.join(scanDir, "scan_err-%i-%i-fscan%i.log"%(MJD, plateID, fscanID))
-    sys.stdout = LogStdOut(logfile)
-    sys.stderr = LogStdErr(errfile)
 
 def query_yes_no(question, default="yes"):
     """Ask a yes/no question via raw_input() and return their answer.
@@ -155,25 +127,6 @@ def getExistingImgs(scanDir):
     imgs = glob.glob(os.path.join(scanDir, "%s*.%s"%(IMGBASENAME, IMGEXTENSION)))
     return imgs
 
-# def configureLogging(scanDir, overwrite=True):
-#     """if overwrite is true, remove any existing logfile,
-#     else append to any existing one
-#     """
-#     # configure logging
-#     logfile = os.path.join(scanDir, "scan.log")
-
-#     if os.path.exists(logfile) and overwrite:
-#         os.remove(logfile)
-
-#     root = logging.getLogger()
-#     root.setLevel(logging.DEBUG)
-
-#     ch = logging.StreamHandler(sys.stdout)
-#     ch.setLevel(logging.DEBUG)
-#     # formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-#     # ch.setFormatter(formatter)
-#     root.addHandler(ch)
-#     return logfile
 
 def _solvePlate(scanDir, plateID, cartID, fscanID, fscanMJD, plot=False, plugMapPath=None, dbLoad=True):
     # global pr
@@ -214,6 +167,8 @@ def _solvePlate(scanDir, plateID, cartID, fscanID, fscanMJD, plot=False, plugMap
         #print("closing screen log")
         #subprocess.call("exit")
 
+    print("copying config files to scan dir")
+    copyConfig()
     # compress all images in the scan directory
     print("compressing fits files")
     subprocess.call("fpack -D *.fits", cwd=scanDir, shell=True)
@@ -224,18 +179,9 @@ def _solvePlate(scanDir, plateID, cartID, fscanID, fscanMJD, plot=False, plugMap
     print("cp %s/* %s"%(scanDir, rawmapperDir))
     print("copying all files to /data/rawmapper in background")
     subprocess.Popen("cp %s/* %s"%(scanDir, rawmapperDir), shell=True)
-    print("killing all python processes")
+    print("Map Finished")
     subprocess.call("killall -9 python", shell=True)
-    # plt.show()
 
-# def resolvePlate(args):
-#     if args.scanDir is None:
-#         raise RuntimeError("Must specify --scanDir with --resolvePlate")
-#     baseDir = os.path.abspath(args.rootDir)
-#     scanDir = os.path.join(baseDir, args.scanDir)
-#     if not os.path.exists(scanDir):
-#         raise RuntimeError("Scan directory doesn't exist: %s"%scanDir)
-#     _solvePlate(scanDir, args.plateID, plot=args.plotDetections, plugMapPath=args.plPlugMap)
 
 
 def reprocessImgs(args):
@@ -253,7 +199,6 @@ def reprocessImgs(args):
     imgs = getExistingImgs(scanDir)
     if not imgs:
         raise RuntimeError("Scan directory doesn't contain existing imgs, cannot --reprocess!")
-    # logfile = configureLogging(scanDir, overwrite=False)
     print("reprocessing images in %s"%scanDir)
     scanParams = getScanParams(os.path.join(scanDir, "scanParams.par"))
     startPos = scanParams["start"]
@@ -278,10 +223,6 @@ def runScan(args):
         cartID = int(raw_input("cartID: "))
     else:
         cartID = int(args.cartID)
-    if not args.scanSpeed:
-        scanSpeed = SCANSPEED
-    else:
-        scanSpeed = float(args.scanSpeed)
     plateDir = os.path.join(BASEDIR, "plate%i"%plateID)
     if not os.path.exists(plateDir):
         os.makedirs(plateDir)
@@ -295,25 +236,19 @@ def runScan(args):
     # plPlugMaps will also be copied there (for utah to grab)
     if not os.path.exists("/data/mapper/%i"%MJD):
         os.makedirs("/data/mapper/%i"%MJD)
-    #configureLogging(scanDir, MJD, plateID, fscanID)
-    # begin logging screen
-    #subprocess.Popen("script %s"%(os.path.join(scanDir, "scan.log")), shell=True)
     print("scanDir: %s"%scanDir)
     print("plate ID: %i"%plateID)
-    print("motor start pos (mm): %.2f"%STARTPOS)
-    print("motor end pos (mm): %.2f"%ENDPOS)
-    print("motor scan speed (mm/sec): %.2f"%SCANSPEED)
+    print("motor start pos (mm): %.2f"%MOTOR_CONFIG.startPos)
+    print("motor end pos (mm): %.2f"%MOTOR_CONFIG.endPos)
+    print("motor scan speed (mm/sec): %.2f"%MOTOR_CONFIG.speed)
 
 
     # create directory to hold camera images
     # note all previous images will be removed if image dir is not empty
-    camera = Camera(scanDir) #, STARTPOS, ENDPOS, scanSpeed)
-
-    # setup object that finds and holds detections
-    # detectedFiberList = DetectedFiberList()
+    camera = Camera(scanDir)
 
     # construct motor, nothing happens until connect is called
-    motorController = MotorController(scanSpeed = scanSpeed)
+    motorController = MotorController()
 
     # set up callback chains for mapping process
 
@@ -325,11 +260,6 @@ def runScan(args):
     motorController.connect()
     reactor.run()
 
-
-def redetect(argv=None):
-    """Rerun a map from existing centroidList
-    """
-    pass
 
 def resolve(scanDir=None):
     """Rerun a map from an existing detectionList, finds expected input files (images, centriods, detections, plPlugMapP)
@@ -359,11 +289,7 @@ def main(argv=None):
         )
     parser.add_argument("--plateID", type=int, required=False, help="Plate ID")
     parser.add_argument("--cartID", type=int, required=False, help="Cart ID")
-    parser.add_argument("--scanSpeed", required=False, type=float, help="speed at which motor scans (mm/sec).")
     parser.add_argument("--plotDetections", action="store_true", default=False, help="if present create png plots with circled dectections, takes much longer." )
-    # parser.add_argument("--resolvePlate", action="store_true", default=False, help="if present, solve plate matching fibers to holes, from pickled img process output.")
-    # parser.add_argument("--reprocessImgs", action="store_true", default=False, help="if present, reprocess the raw images.")
-    # parser.add_argument("--plPlugMap", required=False, help="path to plPlugMap file, if not present try to get it from $PLATELIST_DIR")
     args = parser.parse_args()
     global tstart
     tstart = time.time()

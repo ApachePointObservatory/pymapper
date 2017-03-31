@@ -8,19 +8,6 @@ import time
 import pymba
 import shutil
 
-# import PyGuide
-
-# # CCDInfo = PyGuide.CCDInfo(bias=50, readNoise=10, ccdGain=1)
-# CCDInfo = PyGuide.CCDInfo(bias=1, readNoise=0, ccdGain=1)
-# # pyguide mask
-# PyGuideMask = numpy.zeros((960,960))
-# midPix = 960/2.
-# for x in range(960):
-#     for y in range(960):
-#         pixRad = numpy.sqrt((x-midPix)**2+(y-midPix)**2)
-#         if pixRad > midPix:
-#             PyGuideMask[x,y]=1
-
 class VimbaConfig(object):
     RW = "R/W"
     Integer = "Integer"

@@ -22,10 +22,9 @@ import scipy.optimize
 
 from sdss.utilities.yanny import yanny
 from fitPlugPlateMeas.fitData import TransRotScaleModel, ModelFit
+from .motor import MOTOR_CONFIG
 
 from . import plt
-
-# from .measureSlitPos import getMeasuredFiberPositions
 
 DEBUG = False
 # fwhm are used to build gaussians in a minimizing "energy" function
@@ -46,14 +45,13 @@ class PlotError(Exception):
     pass
 
 class SlitheadSolver(object):
-    def __init__(self, detectedFiberList, centroidList, fiberslitposFile=None):
+    def __init__(self, detectedFiberList, centroidList):
         """List of detections
         """
-        if fiberslitposFile is None:
-            fiberslitposFile = os.path.join(os.getenv("PYMAPPER_DIR"), "etc", "fiberslitpos.dat")
+        self.nomFiberNum = MOTOR_CONFIG.slitPos.keys()
+        self.nomMotorPos = MOTOR_CONFIG.slitPos.values()
         self.detectedFiberList = detectedFiberList
         self.centroidList = centroidList
-        self.nomFiberNum, self.nomMotorPos = self.parseFiberPosFile(fiberslitposFile)
         # self.hack()
         # det motor pos is motor position at each frame
         # normailzed flux is counts in each detection normalized by
@@ -149,20 +147,6 @@ class SlitheadSolver(object):
         fig.savefig(nfn); plt.close(fig)
         # plt.show()
 
-
-    def parseFiberPosFile(self, fiberslitposFile):
-        fiberNums = []
-        motorPositions = []
-        with open(fiberslitposFile, "r") as f:
-            filelines = f.readlines()
-        for line in filelines:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            fiberNum, motorPos = line.split()
-            fiberNums.append(int(fiberNum))
-            motorPositions.append(float(motorPos))
-        return fiberNums, motorPositions
 
     def generateDetectionTrace(self):
         # normalizedFlux = numpy.zeros(self.centroidList[-1]["frame"]-1)
