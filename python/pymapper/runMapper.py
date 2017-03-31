@@ -50,7 +50,7 @@ def copyConfig(scanDir):
     for configFile in [motorConfig, cameraConfig]:
         fileName = os.path.split(configFile)[-1]
         toFile = os.path.join(scanDir, fileName)
-        copying("%s to %s"%(configFile, toFile))
+        print("copying %s to %s"%(configFile, toFile))
         shutil.copy(configFile, toFile)
 
 
@@ -168,7 +168,7 @@ def _solvePlate(scanDir, plateID, cartID, fscanID, fscanMJD, plot=False, plugMap
         #subprocess.call("exit")
 
     print("copying config files to scan dir")
-    copyConfig()
+    copyConfig(scanDir)
     # compress all images in the scan directory
     print("compressing fits files")
     subprocess.call("fpack -D *.fits", cwd=scanDir, shell=True)

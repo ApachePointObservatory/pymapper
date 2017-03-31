@@ -1,6 +1,7 @@
 """ slit head motor control
 """
 from __future__ import division, absolute_import
+import os
 
 from twisted.internet.protocol import Protocol, ClientFactory
 from twisted.internet.endpoints import TCP4ClientEndpoint
@@ -19,14 +20,14 @@ class MotorConfig(object):
         self.speed = None
         self.slitPos = None
         self.direction = None
-        self.loadMe(configFile) # load from file and set attrs
+        self.loadMe() # load from file and set attrs
         self.checkMe()
 
 
-    def loadMe(self, configFile):
+    def loadMe(self):
         slitPos = {}
         slitPopulate = False
-        with open(configFile, "r") as f:
+        with open(self.configFile, "r") as f:
             lines = f.readlines()
         for line in lines:
             line = line.strip()
@@ -45,7 +46,7 @@ class MotorConfig(object):
                 self.endPos = float(self.getlineValue(line))
             elif line.startswith("speed"):
                 self.speed = float(self.getlineValue(line))
-            elif line.startswith("slitPos"):
+            elif line.startswith("slitpos"):
                 # begin populating dict
                 slitPopulate = True
             elif line.startswith("}"):
@@ -199,7 +200,7 @@ class MotorController(object):
 
     def scan(self, callFunc=None):
         print("beginning scan")
-        self.move(self.endPos)
+        self.move(MOTOR_CONFIG.endPos)
         self.laserOff(callFunc=callFunc)
         # send motor back to start position
         self.resetAfterScan()

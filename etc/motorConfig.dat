@@ -1,11 +1,10 @@
 
 # Motor Parameters
-HOSTNAME = "10.1.1.26"
+HOSTNAME = 10.1.1.26
 PORT = 15000
 STARTPOS = 135
 ENDPOS = 20
-SCANSPEED = 2.6
-QUICKSPEED = 2.6
+SPEED = 2.6
 
 # slitPos fiberID: position of fiber on slit (mm)
 slitPos = {
