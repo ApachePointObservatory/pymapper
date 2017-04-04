@@ -243,7 +243,7 @@ class PlPlugMap(object):
             plInd = self.objectInds[objInd]
             # swap fibers 26 and 27.  They are swapped on the spectrograph
             # so we're hacking it in here!
-            fiberNum = detectedFiber.getSlitIndex() + 1
+            fiberNum = detectedFiber.getSlitIndex() + 1 # getSlitIndex is 0 indexed, fiber order begins at 1
             if fiberNum == 26:
                 fiberNum = 27
             elif fiberNum == 27:
@@ -253,22 +253,6 @@ class PlPlugMap(object):
             self.plPlugMap["PLUGMAPOBJ"]["spectrographId"][plInd] = 2
             # paranoia!
             assert self.plPlugMap["PLUGMAPOBJ"][plInd]["holeType"].flatten()[0] == "OBJECT"
-
-    # def _enterMappedData(self, mappedFiberInds, mappedFiberThroughputs, mappedPlPlugObjInds):
-    #     # for fibers not found enter fiberID = -1, spectrographID = -1, and throughput = 0
-    #     # first set spectrograph id and fiber id to -1 for all OBJECTS
-    #     # self.plPlugMap["PLUGMAPOBJ"]["spectrographId"][self.objectInds] = 6
-    #     # self.plPlugMap["PLUGMAPOBJ"]["fiberId"][self.objectInds] = -1
-    #     # throughput should already be 0....do we need to check?\
-    #     for plInd, fiberInd, fiberThroughput in itertools.izip(mappedPlPlugObjInds, mappedFiberInds, mappedFiberThroughputs):
-    #         # fiberInd is fiber number + 1 (zero indexed)
-    #         # plInd is index based on holeType==OBJECT only (we threw away all other types)
-    #         # first find out what plInd index corresponds to in scope of all holes in file
-    #         holeInd = self.objectInds[plInd]
-    #         self.plPlugMap["PLUGMAPOBJ"]["spectrographId"][holeInd] = 0
-    #         # because of zero index add 1, because 1-16 are reserved for guide fibers begin count at 17
-    #         self.plPlugMap["PLUGMAPOBJ"]["fiberId"][holeInd] = fiberInd + 1 + 16
-    #         self.plPlugMap["PLUGMAPOBJ"]["throughput"][holeInd] = fiberThroughput
 
     def writeMe(self):
         # replace plPlugMapP-XXX with plPlugMapM-XXX
