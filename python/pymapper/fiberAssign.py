@@ -241,7 +241,14 @@ class PlPlugMap(object):
         for detectedFiber in detectedFiberList:
             objInd = detectedFiber.getPlPlugObjInd()
             plInd = self.objectInds[objInd]
-            self.plPlugMap["PLUGMAPOBJ"]["fiberId"][plInd] = detectedFiber.getSlitIndex() + 1
+            # swap fibers 26 and 27.  They are swapped on the spectrograph
+            # so we're hacking it in here!
+            fiberNum = detectedFiber.getSlitIndex() + 1
+            if fiberNum == 26:
+                fiberNum = 27
+            elif fiberNum == 27:
+                fiberNum = 26
+            self.plPlugMap["PLUGMAPOBJ"]["fiberId"][plInd] = fiberNum
             self.plPlugMap["PLUGMAPOBJ"]["throughput"][plInd] = detectedFiber.counts
             self.plPlugMap["PLUGMAPOBJ"]["spectrographId"][plInd] = 2
             # paranoia!
@@ -278,7 +285,8 @@ class PlPlugMap(object):
             "fscanMJD": int(self.fscanMJD),
             "fscanId": int(self.fscanID),
             "cartridgeId": int(self.cartID),
-            "instruments": "APOGEE_SOUTH"
+            "instruments": "APOGEE_SOUTH",
+            "swapped fibers": "[26, 27]",
             }
         plPlugMap = yanny(filename=self.filePath, np=True)
         plPlugMap.append(updateDict)
