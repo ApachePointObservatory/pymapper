@@ -55,21 +55,6 @@ for x in range(960):
         if pixRad > midPix:
             PyGuideMask[x,y]=1
 
-# self.imageDir = os.path.join(os.environ["PYMAPPER_DIR"], "tests")
-
-# globals requred due to multiprocessing breaking
-# when calling class methods rather than functions
-# accepting a single argument (processImage)
-# TZERO = None # time stamp of first image
-
-# MOTORSPEED = SCANSPEED #* 1.001199121060579
-# MOTORSTART = STARTPOS
-# MOTOREND = ENDPOS
-
-# MOTORSPEED = SCANSPEED
-# MOTORSTART = STARTPOS
-# MOTOREND = ENDPOS
-
 
 def getScanParams(paramfile):
     """Parse the paramfile to determine the scan params
@@ -179,7 +164,7 @@ class Camera(object):
         """
         print("beginAcquisition")
         if callFunc is not None:
-            print("setting acquision cb: %s"%str(callFunc))
+            # print("setting acquision cb: %s"%str(callFunc))
             self.acquisitionCB = callFunc
         self.acquiring = True
         # this process initializes and starts the camera
