@@ -19,10 +19,10 @@ for path, dirs, files in walkDirs:
                 toFile = os.path.join(toDir, f)
                 if not os.path.exists(toFile):
                     print("creating file", toFile)
-                    shutil.copyfile(fromFile, toFile)
+                    #shutil.copyfile(fromFile, toFile)
             # compress the files we just moved
             print("compressing fits files in %s"%toDir)
-            p = subprocess.Popen("fpack -D *.fits", cwd=toDir, shell=True)
+            #p = subprocess.Popen("fpack -D *.fits", cwd=toDir, shell=True)
 
 #print("beginning to compress files via fpack")
 #for path, dirs, files in os.walk(toDirBase):

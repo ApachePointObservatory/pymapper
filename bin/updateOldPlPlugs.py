@@ -2,6 +2,7 @@
 import os
 import glob
 import shutil
+import subprocess
 
 from pymapper import runMapper
 
@@ -15,16 +16,16 @@ def parsePlPlug(plPlugPath):
     with open(plPlugPath, "r") as f:
         lines = f.readlines()
     for line in lines:
-        line = line.strip
+        line = line.strip()
         for key in outDict.keys():
             if line.startswith(key):
-                value = int(line.split())
+                value = int(line.split(None)[-1])
                 outDict[key] = value
     assert not None in outDict.values()
     return outDict
 
 
-fromDir = "/data/rawmapper/57843/plate8785/fscan9"
+fromDir = "/data/rawmapper/"
 walkDirs = os.walk(fromDir)
 for path, dirs, files in walkDirs:
     if "fscan" in path:
@@ -33,6 +34,7 @@ for path, dirs, files in walkDirs:
         if not len(plPlug) == 1:
             print("no unique plPlugmatch", plPlug, "skipping")
             continue
+        #scanPars = parsePlPlug(plPlug[0])
         try:
             scanPars = parsePlPlug(plPlug[0])
         except:
@@ -41,13 +43,30 @@ for path, dirs, files in walkDirs:
         print("moving old scan data to saved directory")
         savedPath = os.path.join(path, "prefiberswap")
         os.makedirs(savedPath)
-        tocopy = glob.glob(path + "/*.png") + glob.glob(path + "/*.par") + glob.glob("/*.pkl")
+        tocopy = glob.glob(path + "/*.png") + glob.glob(path + "/*.par") + glob.glob(path+"/*.pkl")
         for copyme in tocopy:
-            base, filename = os.path.split()
+            base, filename = os.path.split(copyme)
             newfile = os.path.join(savedPath, filename)
             shutil.copyfile(copyme, newfile)
+        os.remove(plPlug[0])
+        os.remove(os.path.join(path, "detectionList.pkl"))
+        runMapper.resolve(
+            scanDir = path,
+            plateID = scanPars["plateId"],
+            cartID = scanPars["cartridgeId"],
+            fscanID = scanPars["fscanId"],
+            fscanMJD = scanPars["fscanMJD"],
+            )
+        mjddir = "/data/mapper/%i"%scanPars["fscanMJD"]
+        if not os.path.exists(mjddir):
+            os.makedirs(mjddir)
+        # copy the recently created plPlugMap to the mjddir
+        plPlug = glob.glob(path+"/plPlug*.par")[0]
+        print("copying", plPlug, "to", mjddir)
+        subprocess.call("cp %s %s"%(plPlug, mjddir), shell=True)
 
 
 
-if __name__ == "__main__":
-    runMapper.resolve()
+
+        
+
