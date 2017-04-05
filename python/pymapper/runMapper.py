@@ -261,7 +261,7 @@ def runScan(args):
     reactor.run()
 
 
-def resolve(scanDir=None):
+def resolve(scanDir=None, plateID=None, cartID=None, fscanID=None, fscanMJD=None):
     """Rerun a map from an existing detectionList, finds expected input files (images, centriods, detections, plPlugMapP)
     from the working directory, writes output to the same directory (images, plPlugMapM)
     """
@@ -269,15 +269,25 @@ def resolve(scanDir=None):
     tstart = time.time()
     if scanDir is None:
         scanDir = os.getcwd()
-    plPlugMapFile = glob.glob(os.path.join(scanDir, "plPlugMapP-*.par"))
-    if not plPlugMapFile:
-        raise RuntimeError("No plPlugMapP file found")
-    if not len(plPlugMapFile)==1:
-        raise RuntimeError("Found multiple plPlugMap files!")
-    plPlugMapFile = plPlugMapFile[0]
-    # get the plateID from the plPlug filename
-    plateID = int(os.path.split(plPlugMapFile)[-1].strip("plPlugMapP-").strip(".par"))
-    _solvePlate(scanDir, plateID, 99, 99, 9999, plot=False, plugMapPath=plPlugMapFile, dbLoad=False)
+    if plateID is None:
+        plPlugMapFile = glob.glob(os.path.join(scanDir, "plPlugMapP-*.par"))
+        plPlugMapFile = plPlugMapFile[0]
+        # get the plateID from the plPlug filename
+        plateID = int(os.path.split(plPlugMapFile)[-1].strip("plPlugMapP-").strip(".par"))
+        if not plPlugMapFile:
+            raise RuntimeError("No plPlugMapP file found")
+        if not len(plPlugMapFile)==1:
+            raise RuntimeError("Found multiple plPlugMap files!")
+    else:
+        plPlugMapFile = pathPlugMapP(plateID)
+    if cartID is None:
+        cartID = 99
+    if fscanID is None:
+        fscanID = 99
+    if fscanMJD is None:
+        fscanMJD = 9999
+
+    _solvePlate(scanDir, plateID, cartID, fscanID, fscanMJD, plot=False, plugMapPath=plPlugMapFile, dbLoad=False)
 
 
 def main(argv=None):
