@@ -25,11 +25,13 @@ def parsePlPlug(plPlugPath):
     return outDict
 
 
-fromDir = "/data/rawmapper/"
+fromDir = "/data/rawmapper/57799/plate9652/fscan1"
 walkDirs = os.walk(fromDir)
 for path, dirs, files in walkDirs:
-    if "fscan" in path:
-        print("working with ", path)
+    if "fscan" in path and not "prefiberswap" in path:
+        if os.path.exists(os.path.join(path, "prefiberswap")):
+            print(path, "already run")
+            continue
         plPlug = glob.glob(path + "/plPlug*.par")
         if not len(plPlug) == 1:
             print("no unique plPlugmatch", plPlug, "skipping")
@@ -50,13 +52,20 @@ for path, dirs, files in walkDirs:
             shutil.copyfile(copyme, newfile)
         os.remove(plPlug[0])
         os.remove(os.path.join(path, "detectionList.pkl"))
-        runMapper.resolve(
-            scanDir = path,
-            plateID = scanPars["plateId"],
-            cartID = scanPars["cartridgeId"],
-            fscanID = scanPars["fscanId"],
-            fscanMJD = scanPars["fscanMJD"],
-            )
+        try:
+            runMapper.resolve(
+                scanDir = path,
+                plateID = scanPars["plateId"],
+                cartID = scanPars["cartridgeId"],
+                fscanID = scanPars["fscanId"],
+                fscanMJD = scanPars["fscanMJD"],
+                )
+        except Exception as e:
+            print(path, "FAILED!!!!")
+            print(e)
+            subprocess.call("cp %s/* %s"%(savedPath, path), shell=True)
+            subprocess.call("rm -r %s"%savedPath, shell=True) 
+            continue
         mjddir = "/data/mapper/%i"%scanPars["fscanMJD"]
         if not os.path.exists(mjddir):
             os.makedirs(mjddir)
