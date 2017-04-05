@@ -167,20 +167,20 @@ def _solvePlate(scanDir, plateID, cartID, fscanID, fscanMJD, plot=False, plugMap
         #print("closing screen log")
         #subprocess.call("exit")
 
-    print("copying config files to scan dir")
-    copyConfig(scanDir)
-    # compress all images in the scan directory
-    print("compressing fits files")
-    subprocess.call("fpack -D *.fits", cwd=scanDir, shell=True)
-    print("copying all map data to /data/rawmapper")
-    rawmapperDir = "/data/rawmapper/%i/plate%i/fscan%i"%(fscanMJD, plateID, fscanID)
-    print("creating %s"%rawmapperDir)
-    os.makedirs(rawmapperDir)
-    print("cp %s/* %s"%(scanDir, rawmapperDir))
-    print("copying all files to /data/rawmapper in background")
-    subprocess.Popen("cp %s/* %s"%(scanDir, rawmapperDir), shell=True)
-    print("Map Finished")
-    subprocess.call("killall -9 python", shell=True)
+        print("copying config files to scan dir")
+        copyConfig(scanDir)
+        # compress all images in the scan directory
+        print("compressing fits files")
+        subprocess.call("fpack -D *.fits", cwd=scanDir, shell=True)
+        print("copying all map data to /data/rawmapper")
+        rawmapperDir = "/data/rawmapper/%i/plate%i/fscan%i"%(fscanMJD, plateID, fscanID)
+        print("creating %s"%rawmapperDir)
+        os.makedirs(rawmapperDir)
+        print("cp %s/* %s"%(scanDir, rawmapperDir))
+        print("copying all files to /data/rawmapper in background")
+        subprocess.Popen("cp %s/* %s"%(scanDir, rawmapperDir), shell=True)
+        print("Map Finished")
+        subprocess.call("killall -9 python", shell=True)
 
 
 
