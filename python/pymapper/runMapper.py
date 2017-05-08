@@ -180,28 +180,30 @@ def _solvePlate(scanDir, plateID, cartID, fscanID, fscanMJD, plot=False, plugMap
         print("copying all files to /data/rawmapper in background")
         subprocess.Popen("cp %s/* %s"%(scanDir, rawmapperDir), shell=True)
         print("Map Finished")
+
+        # We print a the detections and missing fibres again so that they are the
+        # last thing the pluggers see.
+
+        detected_str = '# fibres detected: {0}'.format(shs.detectedFiberList)
+        missing_str = '# fibres missing: {0}'.format(shs.missingFibers)
+        list_missing_str = (None if len(shs.missingFibers) == 0
+                            else 'Missing fibres: {0}'.format(', '.join(shs.missingFibers)))
+
+        max_length = max(len(detected_str), len(missing_str),
+                         0 if list_missing_str is None else len(list_missing_str))
+        hash_padding = '#' * max_length
+
+        print('')
+        print(hash_padding)
+        print(detected_str)
+        print(missing_str)
+        if list_missing_str:
+            print(list_missing_str)
+        print(hash_padding)
+        print('')
+
+        # Kills itself for good measure.
         subprocess.call("killall -9 python", shell=True)
-
-    # We print a the detections and missing fibres again so that they are the
-    # last thing the pluggers see.
-
-    detected_str = '# fibres detected: {0}'.format(shs.detectedFiberList)
-    missing_str = '# fibres missing: {0}'.format(shs.missingFibers)
-    list_missing_str = (None if len(shs.missingFibers) == 0
-                        else 'Missing fibres: {0}'.format(', '.join(shs.missingFibers)))
-
-    max_length = max(len(detected_str), len(missing_str),
-                     0 if list_missing_str is None else len(list_missing_str))
-    hash_padding = '#' * max_length
-
-    print('')
-    print(hash_padding)
-    print(detected_str)
-    print(missing_str)
-    if list_missing_str:
-        print(list_missing_str)
-    print(hash_padding)
-    print('')
 
 
 def reprocessImgs(args):
