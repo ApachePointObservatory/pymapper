@@ -184,8 +184,8 @@ def _solvePlate(scanDir, plateID, cartID, fscanID, fscanMJD, plot=False, plugMap
         # We print a the detections and missing fibres again so that they are the
         # last thing the pluggers see.
 
-        detected_str = '# fibres detected: {0}'.format(shs.detectedFiberList)
-        missing_str = '# fibres missing: {0}'.format(shs.missingFibers)
+        detected_str = '# fibres detected: {0}'.format(len(shs.detectedFiberList))
+        missing_str = '# fibres missing: {0}'.format(len(shs.missingFibers))
         list_missing_str = (None if len(shs.missingFibers) == 0
                             else 'Missing fibres: {0}'.format(', '.join(shs.missingFibers)))
 
