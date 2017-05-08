@@ -186,8 +186,11 @@ def _solvePlate(scanDir, plateID, cartID, fscanID, fscanMJD, plot=False, plugMap
 
         detected_str = '# fibres detected: {0}'.format(len(shs.detectedFiberList))
         missing_str = '# fibres missing: {0}'.format(len(shs.missingFibers))
-        list_missing_str = (None if len(shs.missingFibers) == 0
-                            else 'Missing fibres: {0}'.format(', '.join(shs.missingFibers)))
+
+        if len(shs.missingFibers) == 0:
+            list_missing_str = None:
+        else:
+            list_missing_str = 'Missing fibres: {0}'.format(', '.join(map(str, shs.missingFibers)))
 
         max_length = max(len(detected_str), len(missing_str),
                          0 if list_missing_str is None else len(list_missing_str))
