@@ -188,7 +188,7 @@ def _solvePlate(scanDir, plateID, cartID, fscanID, fscanMJD, plot=False, plugMap
         missing_str = '# fibres missing: {0}'.format(len(shs.missingFibers))
 
         if len(shs.missingFibers) == 0:
-            list_missing_str = None:
+            list_missing_str = None
         else:
             list_missing_str = 'Missing fibres: {0}'.format(', '.join(map(str, shs.missingFibers)))
 
