@@ -120,7 +120,22 @@ vimba = pymba.Vimba()
 vimba.startup()
 system = vimba.getSystem()
 system.runFeatureCommand("GeVDiscoveryAllOnce")
-camera = vimba.getCamera(GLOBALS.cameraConfig.cameraID)
+cameraIds = vimba.getCameraIds()
+backupCamID = "DEV_000F3102F487"
+normalCamID = "DEV_000F310261E6"
+backupFound = backupCamID in cameraIds
+normalFound = normalCamID in cameraIds
+if backupFound and normalFound:
+    raise RuntimeError("Found both mapper cameras!  Please make sure only one is plugged into the network")
+if not (normalFound or backupFound):
+    raise RuntimeError("Could not find a mapper camera on the current network.  Please check mapper computer and camera IPs.")
+if backupFound:
+    print("found backup camera")
+    useCameraID = backupCamID
+else:
+    print("using normal camera")
+    useCameraID = normalCamID
+camera = vimba.getCamera(useCameraID)
 camera.openCamera()
 # load config settings
 for key, val in GLOBALS.cameraSettings.iteritems():
